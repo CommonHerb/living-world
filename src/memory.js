@@ -39,6 +39,7 @@ const BASE_FIDELITY = {
 function createMemory(eventType, subject, value, valence, tick, fidelity) {
   return {
     eventType,
+    type: eventType, // alias for compatibility with display/diagnostics
     subject,       // who/what — string or null
     value,         // numeric payload
     fidelity: fidelity !== undefined ? fidelity : (BASE_FIDELITY[eventType] || 0.7),

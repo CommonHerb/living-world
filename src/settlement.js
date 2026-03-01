@@ -76,6 +76,7 @@ function createSettlement(opts) {
     treasury: startingTreasury,
     taxRate: 0.20,
     council,
+    leader: council[0],
     npcs,
     events: [],
     history: [],

@@ -261,6 +261,7 @@ function tickAging(settlement, tick) {
           for (const fm of familyMembers) {
             const inherited = {
               ...mem,
+              type: mem.type || mem.eventType,
               weight: (mem.weight || 1) * MEMORY_TRANSFER_FIDELITY,
               source: `inherited from ${npc.name}`,
               generation: (mem.generation || 0) + 1,

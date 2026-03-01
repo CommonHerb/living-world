@@ -40,9 +40,9 @@ function tickGossip(settlement, tick) {
     const believeChance = target.genome.credulity * 0.6 + Math.max(0, rel.trust) * 0.4;
     if (rng.random() > believeChance) continue;
 
-    const fidelityLoss = 0.7 + rng.random() * 0.2;
-    const valueDrift = 0.8 + rng.random() * 0.4;
-    const valenceDrift = 0.85 + rng.random() * 0.3;
+    const fidelityLoss = 0.5 + rng.random() * 0.3;  // 0.5-0.8 multiplier (was 0.7-0.9)
+    const valueDrift = 0.6 + rng.random() * 0.8;    // more value distortion
+    const valenceDrift = 0.7 + rng.random() * 0.6;  // more valence distortion
 
     const gossipMemory = createMemory(
       strongest.eventType,
@@ -54,6 +54,9 @@ function tickGossip(settlement, tick) {
     );
 
     addMemory(target, gossipMemory);
+
+    // Retelling slightly degrades the teller's own memory
+    strongest.fidelity *= (0.9 + rng.random() * 0.08);
 
     updateRelationship(npc, target.id, 0.02, 0.01);
     updateRelationship(target, npc.id, 0.01, 0.01);

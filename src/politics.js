@@ -72,6 +72,7 @@ function tickCouncilElection(settlement, tick) {
   const sorted = [...votes.entries()].sort((a, b) => b[1] - a[1]);
   const oldCouncil = [...settlement.council];
   settlement.council = sorted.slice(0, 3).map(([id]) => id);
+  settlement.leader = settlement.council[0];
   const councilNPCs = settlement.council.map(id => npcs.find(n => n.id === id));
 
   const oldTaxRate = settlement.taxRate;
@@ -98,7 +99,16 @@ function tickCouncilElection(settlement, tick) {
   settlement.events.push(detailEvent);
   // Keep a permanent election log for diagnostics
   if (!settlement.electionHistory) settlement.electionHistory = [];
-  settlement.electionHistory.push(detailEvent);
+  const winnerId = sorted[0][0];
+  const winnerNpc = npcs.find(n => n.id === winnerId);
+  settlement.electionHistory.push({
+    tick,
+    type: 'election_result',
+    winner: winnerNpc ? winnerNpc.name : 'unknown',
+    winnerId,
+    council: councilNPCs.map(n => ({ id: n.id, name: n.name, votes: sorted.find(([id]) => id === n.id)?.[1] || 0 })),
+    text: detailEvent.text,
+  });
 
   if (settlement.chronicle) {
     recordEvent(settlement.chronicle, tick, 'election',
@@ -149,6 +159,7 @@ function tickMonarchySuccession(settlement, tick) {
   if (!monarch) {
     const sorted = [...npcs].sort((a, b) => b.genome.assertiveness - a.genome.assertiveness);
     settlement.council = [sorted[0].id];
+    settlement.leader = sorted[0].id;
     settlement.events.push({
       tick,
       type: 'succession',
@@ -178,6 +189,7 @@ function tickMonarchySuccession(settlement, tick) {
     if (challengers.length > 0 && rng.random() < 0.15) {
       const challenger = challengers.sort((a, b) => b.genome.assertiveness - a.genome.assertiveness)[0];
       settlement.council = [challenger.id];
+      settlement.leader = challenger.id;
       settlement.events.push({
         tick,
         type: 'coup',
