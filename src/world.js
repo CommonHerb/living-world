@@ -13,6 +13,7 @@ const { tickReligion } = require('./religion');
 const { tickMigration } = require('./migration');
 const { tickTrade } = require('./trade');
 const { tickSocial } = require('./social');
+const { tickSeasons, tickRandomEvents } = require('./seasons');
 
 function createWorld(seed) {
   const rng = new RNG(seed);
@@ -76,6 +77,12 @@ function tickWorld(world) {
     settlement.events = [];
     settlement.tick = world.tick;
     settlement.tickRng = new RNG(settlement.seed ^ (world.tick * 2654435761));
+
+    // Phase 0: Seasons & Environment
+    tickSeasons(settlement, world.tick);
+
+    // Phase 0b: Random Events (external shocks)
+    tickRandomEvents(settlement, world.tick);
 
     // Phase 1: Production & Consumption
     tickEconomy(settlement, world.tick);

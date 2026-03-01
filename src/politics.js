@@ -271,41 +271,120 @@ function tickTreasuryCheck(settlement, tick) {
 
 function detectFactions(settlement) {
   const npcs = settlement.npcs.filter(n => n.alive !== false && !n.isChild);
-  const antiTax = npcs.filter(n => n.opinions.taxSentiment < -0.15);
-  const proTax = npcs.filter(n => n.opinions.taxSentiment > 0.15);
-  const moderate = npcs.filter(n => Math.abs(n.opinions.taxSentiment) <= 0.15);
-  const unaligned = []; // everyone gets a faction now
-
+  const issues = settlement._politicalIssues || [];
+  
+  // Multi-axis faction detection
+  // Axis 1: Tax sentiment (always)
+  // Axis 2: Defense (if raids have happened)
+  // Axis 3: Religious (if schisms exist)
+  // Axis 4: Leader approval
+  
   const factions = [];
+  const assigned = new Set();
+  
+  // Check for defense hawks vs doves
+  const hasDefenseIssue = issues.includes('defense');
+  const hasReligiousIssue = settlement.religion?.schisms?.length > 0;
+  
+  // Religious faction split
+  if (hasReligiousIssue && settlement.religion.schisms.length > 0) {
+    const schism = settlement.religion.schisms[0];
+    const mythA = settlement.religion.myths.find(m => m.id === schism.beliefA);
+    const mythB = settlement.religion.myths.find(m => m.id === schism.beliefB);
+    
+    if (mythA && mythB) {
+      const holdersA = npcs.filter(n => mythA.holders.includes(n.id) && !mythB.holders.includes(n.id));
+      const holdersB = npcs.filter(n => mythB.holders.includes(n.id) && !mythA.holders.includes(n.id));
+      
+      if (holdersA.length >= 2) {
+        factions.push({
+          name: 'The Faithful', emoji: '🙏', desc: `followers of "${mythA.name}"`,
+          members: holdersA, axis: 'religion',
+        });
+        for (const n of holdersA) assigned.add(n.id);
+      }
+      if (holdersB.length >= 2) {
+        factions.push({
+          name: 'The Reformers', emoji: '⚡', desc: `followers of "${mythB.name}"`,
+          members: holdersB, axis: 'religion',
+        });
+        for (const n of holdersB) assigned.add(n.id);
+      }
+    }
+  }
+  
+  // Defense hawks (only unassigned NPCs or allow overlap)
+  if (hasDefenseIssue) {
+    const raidMemory = npcs.filter(n => 
+      !assigned.has(n.id) &&
+      n.memories.some(m => m.eventType === 'raid' || m.eventType === 'bandit_attack')
+    );
+    if (raidMemory.length >= 2) {
+      const hawks = raidMemory.filter(n => n.opinions.taxSentiment > -0.1); // willing to pay for defense
+      if (hawks.length >= 2) {
+        factions.push({
+          name: 'The Sentinels', emoji: '⚔️', desc: 'pro-defense, hawkish',
+          members: hawks, axis: 'defense',
+        });
+        for (const n of hawks) assigned.add(n.id);
+      }
+    }
+  }
+  
+  // Tax-based factions (traditional, for remaining NPCs)
+  const remaining = npcs.filter(n => !assigned.has(n.id));
+  const antiTax = remaining.filter(n => n.opinions.taxSentiment < -0.15);
+  const proTax = remaining.filter(n => n.opinions.taxSentiment > 0.15);
+  const moderate = remaining.filter(n => Math.abs(n.opinions.taxSentiment) <= 0.15);
+
   if (antiTax.length >= 2) {
     const avg = antiTax.reduce((s, n) => s + n.opinions.taxSentiment, 0) / antiTax.length;
     factions.push({
       name: 'The Tillers', emoji: '🌾', desc: 'anti-tax, producer-heavy',
-      members: antiTax, avgSentiment: avg,
+      members: antiTax, avgSentiment: avg, axis: 'tax',
     });
+    for (const n of antiTax) assigned.add(n.id);
   }
   if (proTax.length >= 2) {
     const avg = proTax.reduce((s, n) => s + n.opinions.taxSentiment, 0) / proTax.length;
     factions.push({
       name: 'The Shields', emoji: '🛡️', desc: 'pro-tax, guard/consumer-heavy',
-      members: proTax, avgSentiment: avg,
+      members: proTax, avgSentiment: avg, axis: 'tax',
     });
+    for (const n of proTax) assigned.add(n.id);
   }
   if (moderate.length >= 2) {
     const avg = moderate.reduce((s, n) => s + n.opinions.taxSentiment, 0) / moderate.length;
     factions.push({
       name: 'The Scales', emoji: '⚖️', desc: 'centrist, pragmatic',
-      members: moderate, avgSentiment: avg,
+      members: moderate, avgSentiment: avg, axis: 'tax',
     });
+    for (const n of moderate) assigned.add(n.id);
+  }
+  
+  // Faction splitting: if any faction is > 50% of population, split it
+  for (let i = factions.length - 1; i >= 0; i--) {
+    const f = factions[i];
+    if (f.members.length > npcs.length * 0.5 && f.members.length >= 6) {
+      // Split by leader approval
+      const proLeader = f.members.filter(n => n.opinions.leaderApproval > 0);
+      const antiLeader = f.members.filter(n => n.opinions.leaderApproval <= 0);
+      
+      if (proLeader.length >= 2 && antiLeader.length >= 2) {
+        factions.splice(i, 1);
+        factions.push({
+          name: `${f.name} (Loyalists)`, emoji: f.emoji, desc: `${f.desc}, pro-leadership`,
+          members: proLeader, axis: f.axis,
+        });
+        factions.push({
+          name: `${f.name} (Dissidents)`, emoji: '🔥', desc: `${f.desc}, anti-leadership`,
+          members: antiLeader, axis: f.axis,
+        });
+      }
+    }
   }
 
-  // Anyone not in a faction (because their group was < 2) goes to unaligned
-  const factionMembers = new Set();
-  for (const f of factions) for (const m of f.members) factionMembers.add(m.id);
-  for (const npc of npcs) {
-    if (!factionMembers.has(npc.id)) unaligned.push(npc);
-  }
-
+  const unaligned = npcs.filter(n => !assigned.has(n.id));
   return { factions, unaligned };
 }
 

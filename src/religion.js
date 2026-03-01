@@ -177,7 +177,23 @@ function generateMythName(eventType, fidelity, valence, settlement) {
     ],
   };
 
-  const pool = nameTemplates[eventType] || [
+  const extraTemplates = {
+    drought: ['The Thirsty Earth', 'The Dry Season', 'The Withering', 'The Parched Days'],
+    harsh_winter: ['The Great Freeze', 'The Ice That Spoke', 'The Bitter Cold', 'The White Death'],
+    plague: ['The Sickness', 'The Shadow Plague', 'The Great Dying', 'The Dark Days'],
+    flood: ['The Rising Waters', 'The River\'s Wrath', 'The Great Deluge', 'The Drowning'],
+    raid: ['The Day of Swords', 'The Blood Tax', 'The Outsiders\' Fury', 'The Burning Night'],
+    fire: ['The Great Burning', 'The Night of Flames', 'The Red Hour'],
+    prophet: ['The Voice', 'The Awakening', 'The Revelation', 'The Dividing Word'],
+    winter_death: ['The Cold Harvest', 'The Ice\'s Claim', 'Winter\'s Price'],
+    discovery: ['The Gift Below', 'The Earth\'s Blessing', 'The Lucky Strike'],
+    bountiful_year: ['The Year of Plenty', 'The Great Abundance', 'The Blessed Season'],
+    food_shortage: ['The Empty Bellies', 'The Wanting', 'The Lean Time'],
+    coup: ['The Overthrow', 'The Breaking of Power', 'The Night of Daggers'],
+    traders: ['The Coming of Strangers', 'The Day of Trade', 'The Foreign Wind'],
+  };
+
+  const pool = nameTemplates[eventType] || extraTemplates[eventType] || [
     'The Strange Happening', 'The Omen', 'The Sign', 'The Turning',
   ];
 
@@ -590,6 +606,201 @@ function applySacredLawPressure(settlement) {
   }
 }
 
+// ── Belief Decay ──
+
+function decayBeliefs(settlement, tick) {
+  const religion = settlement.religion;
+  const living = getLiving(settlement);
+  if (living.length === 0) return;
+
+  // Myths lose holders over time if not reinforced by new events
+  for (const myth of religion.myths) {
+    // Each tick, some holders "forget" if they have no recent memories of the event type
+    for (let i = myth.holders.length - 1; i >= 0; i--) {
+      const npcId = myth.holders[i];
+      const npc = living.find(n => n.id === npcId);
+      if (!npc) { myth.holders.splice(i, 1); continue; }
+      
+      const hasRecentMemory = npc.memories.some(m => 
+        m.eventType === myth.sourceEventType && m.fidelity > 0.3
+      );
+      if (!hasRecentMemory && seededRandom(settlement) < 0.02) {
+        myth.holders.splice(i, 1);
+      }
+    }
+  }
+
+  // Beliefs with low adoption get removed
+  for (let i = religion.beliefs.length - 1; i >= 0; i--) {
+    const belief = religion.beliefs[i];
+    const myth = religion.myths.find(m => m.id === belief.mythId);
+    if (!myth) { religion.beliefs.splice(i, 1); continue; }
+    
+    const adoption = myth.holders.length / living.length;
+    if (adoption < 0.2 && (tick - belief.formedTick) > 100) {
+      religion.beliefs.splice(i, 1);
+      settlement.events.push({
+        tick, type: 'belief_faded',
+        text: `A belief has faded from ${settlement.name}: "${belief.narrative}"`,
+      });
+    }
+  }
+}
+
+// ── Event-Driven Myth Generation ──
+
+/**
+ * Dramatic recent events (not just old chronicle entries) can generate myths.
+ * This allows NEW myths to form continuously as new things happen.
+ */
+const DRAMATIC_EVENT_TYPES = new Set([
+  'drought', 'harsh_winter', 'plague', 'flood', 'fire', 'raid',
+  'coup', 'prophet', 'winter_death', 'discovery', 'bountiful_year',
+  'famine', 'food_shortage',
+]);
+
+function detectDramaticMyths(settlement, tick) {
+  const religion = settlement.religion;
+  const living = getLiving(settlement);
+  if (living.length === 0) return;
+
+  // Look for dramatic memories shared by many NPCs
+  const memoryCounts = {};
+  for (const npc of living) {
+    for (const mem of npc.memories) {
+      if (!DRAMATIC_EVENT_TYPES.has(mem.eventType)) continue;
+      if (mem.fidelity < 0.3) continue;
+      const key = `${mem.eventType}:${Math.floor(mem.tick / 25)}`; // 25-tick eras
+      if (!memoryCounts[key]) {
+        memoryCounts[key] = { eventType: mem.eventType, tick: mem.tick, count: 0, totalValence: 0 };
+      }
+      memoryCounts[key].count++;
+      memoryCounts[key].totalValence += mem.valence;
+    }
+  }
+
+  for (const [key, data] of Object.entries(memoryCounts)) {
+    if (data.count < Math.floor(living.length * 0.4)) continue;
+    
+    // Check if myth already exists for this event+era
+    const era = key.split(':')[1];
+    if (religion.myths.some(m => 
+      m.sourceEventType === data.eventType && 
+      Math.floor(m.sourceTick / 25) === parseInt(era)
+    )) continue;
+
+    // Cap total myths to prevent spam (but higher cap for dramatic events)
+    if (religion.myths.length >= 15) {
+      // Remove oldest myth with fewest holders
+      const weakest = religion.myths.reduce((a, b) => 
+        a.holders.length < b.holders.length ? a : b
+      );
+      const idx = religion.myths.indexOf(weakest);
+      religion.myths.splice(idx, 1);
+    }
+
+    const avgValence = data.totalValence / data.count;
+    const mythName = generateMythName(data.eventType, 0.5, avgValence, settlement);
+    const narrative = generateDramaticNarrative(data.eventType, settlement);
+    const moral = deriveMoral(data.eventType, avgValence, settlement);
+
+    const myth = {
+      id: religion.nextMythId++,
+      name: mythName,
+      sourceEventId: -1,
+      sourceEventType: data.eventType,
+      sourceTick: data.tick,
+      formedTick: tick,
+      narrative,
+      originalOutcome: '',
+      distortedValue: 0,
+      distortedValence: avgValence,
+      avgFidelity: 0.5,
+      holders: living.map(n => n.id), // dramatic events are widely known
+      moral,
+      behaviorEffect: deriveBehaviorEffect(data.eventType, avgValence),
+    };
+
+    religion.myths.push(myth);
+
+    settlement.events.push({
+      tick, type: 'myth',
+      text: `MYTH FORMED: "${mythName}" — ${narrative}`,
+    });
+
+    if (settlement.chronicle) {
+      recordEvent(settlement.chronicle, tick, 'myth_formed', [],
+        `A new myth: "${mythName}" — ${narrative}`,
+        { affectsAll: true }
+      );
+    }
+  }
+}
+
+function generateDramaticNarrative(eventType, settlement) {
+  const templates = {
+    drought: [
+      'The spirits withheld the rain to test the people\'s resolve',
+      'The sky gods grew angry and sealed the clouds',
+      'The earth itself grew thirsty and drank the rivers dry',
+    ],
+    harsh_winter: [
+      'The ice spirits descended to judge the unworthy',
+      'Winter\'s fury was the ancestors\' punishment for forgetting the old ways',
+      'The cold came because the people had grown soft and proud',
+    ],
+    plague: [
+      'A curse was laid upon the settlement by dark spirits',
+      'The plague came from beyond the mountains, carried by ill winds',
+      'The ancestors called many souls home at once, a great gathering',
+    ],
+    flood: [
+      'The river spirit raged against those who took too much',
+      'The waters rose to wash away the settlement\'s sins',
+      'The flood was a rebirth — what was destroyed made room for something new',
+    ],
+    fire: [
+      'The fire spirits grew jealous of the people\'s abundance',
+      'Flames purified the settlement of its decadence',
+    ],
+    raid: [
+      'Outsiders came to test whether the people deserved their land',
+      'The raid was punishment for the settlement\'s lack of vigilance',
+      'Warriors from beyond the hills nearly ended everything',
+    ],
+    coup: [
+      'The old ruler was struck down by the will of the people',
+      'Power changed hands as the spirits demanded new leadership',
+    ],
+    prophet: [
+      'A voice spoke truths that divided the faithful',
+      'One among us heard the ancestors and spoke their words',
+    ],
+    winter_death: [
+      'The cold claimed those the ancestors wanted most',
+      'Winter chose its victims and none could argue',
+    ],
+    discovery: [
+      'The earth opened its bounty to reward the faithful',
+      'Hidden riches revealed themselves to those who deserved them',
+    ],
+    bountiful_year: [
+      'The land blessed those who honored the old ways',
+      'Abundance came as proof that the spirits were pleased',
+    ],
+    food_shortage: [
+      'Hunger came because the people forgot to give thanks',
+      'The empty bellies were a message from the ancestors',
+    ],
+  };
+  
+  const pool = templates[eventType] || [
+    'The spirits moved in ways beyond understanding',
+    'Something changed in the world that none could explain',
+  ];
+  return seededPick(pool, settlement);
+}
+
 // ── Main Tick ──
 
 function tickReligion(settlement, tick) {
@@ -609,7 +820,15 @@ function tickReligion(settlement, tick) {
     refreshHolders(myth, living);
   }
 
+  // Belief decay — living system
+  decayBeliefs(settlement, tick);
+
+  // Original myth detection (from chronicle)
   detectMyths(settlement, tick);
+
+  // NEW: dramatic event-driven myths
+  detectDramaticMyths(settlement, tick);
+
   detectBeliefs(settlement, tick);
   detectRituals(settlement, tick);
   detectPriests(settlement, tick);

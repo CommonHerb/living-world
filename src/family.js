@@ -277,6 +277,29 @@ function tickAging(settlement, tick) {
         }
       }
 
+      // Inheritance: distribute wealth, with tax
+      if (npc.gold > 0) {
+        const inheritanceTax = 0.3; // 30% goes to treasury
+        const taxAmount = npc.gold * inheritanceTax;
+        settlement.treasury += taxAmount;
+        const remaining = npc.gold - taxAmount;
+        
+        // Distribute to family members
+        const heirs = settlement.npcs.filter(n =>
+          n.alive && n.id !== npc.id &&
+          (n.spouseId === npc.id || n.parentIds?.includes(npc.id) || npc.parentIds?.includes(n.id))
+        );
+        if (heirs.length > 0) {
+          const perHeir = remaining / heirs.length;
+          for (const heir of heirs) {
+            heir.gold += perHeir;
+          }
+        } else {
+          settlement.treasury += remaining; // no heirs, goes to community
+        }
+        npc.gold = 0;
+      }
+
       if (npc.spouseId !== null) {
         const spouse = settlement.npcs.find(n => n.id === npc.spouseId);
         if (spouse && spouse.alive) {

@@ -17,16 +17,34 @@ function tickEconomy(settlement, tick) {
 
   const activeNpcs = settlement.npcs.filter(n => n.alive !== false && !n.isChild);
 
-  // === 0. SUBSISTENCE ===
+  // === 0. SUBSISTENCE + SPENDING ===
   for (const npc of activeNpcs) {
+    // Base income
     npc.gold += 0.5;
+    
+    // Living expenses: food, rent, upkeep — progressive with wealth
+    const livingCost = 0.3 + Math.max(0, npc.gold * 0.03); // minimum 0.3g + 3% wealth drain
+    npc.gold = Math.max(0, npc.gold - livingCost);
+    
+    // Redistribute to treasury (represents spending into community)
+    settlement.treasury += livingCost * 0.5;
+  }
+  
+  // === 0b. WEALTH CAP & POOR EARNINGS ===
+  // Poor NPCs get opportunities — odd jobs, foraging
+  for (const npc of activeNpcs) {
+    if (npc.gold < 5) {
+      npc.gold += rng.random() * 0.8; // scrounging income for the poor
+    }
   }
 
   // === 1. PRODUCTION ===
   for (const npc of activeNpcs) {
     switch (npc.job) {
       case 'farmer': {
-        const produced = rng.int(3, 6);
+        const base = rng.int(3, 6);
+        const multiplier = settlement.foodMultiplier || 1.0;
+        const produced = Math.max(0, Math.round(base * multiplier));
         npc.inventory.grain += produced;
         break;
       }

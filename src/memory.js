@@ -9,7 +9,7 @@
  * Below 0.2 fidelity = forgotten.
  */
 
-const MAX_MEMORIES = 12;
+const MAX_MEMORIES = 16;
 const DECAY_RATE = 0.992;
 const FORGET_THRESHOLD = 0.2;
 
@@ -34,6 +34,19 @@ const BASE_FIDELITY = {
   unjust_acquittal: 0.9,
   trial_juror: 0.6,
   bandit_attack: 0.9,
+  drought: 0.95,
+  harsh_winter: 0.95,
+  winter_death: 0.95,
+  plague: 0.99,
+  flood: 0.95,
+  fire: 0.90,
+  raid: 0.95,
+  prophet: 0.80,
+  discovery: 0.85,
+  bountiful_year: 0.80,
+  traders: 0.70,
+  migration: 0.85,
+  coup: 0.95,
 };
 
 function createMemory(eventType, subject, value, valence, tick, fidelity) {
@@ -60,7 +73,21 @@ function addMemory(npc, memory) {
   }
 }
 
+// Memory types that are "boring" steady-state confirmations — cap these
+const BORING_MEMORY_TYPES = new Set(['surplus', 'good_trade', 'election']);
+const BORING_MEMORY_CAP = 2;
+
 function formMemory(npc, eventType, subject, value, valence, tick) {
+  // Cap boring/steady-state memories to prevent flooding
+  if (BORING_MEMORY_TYPES.has(eventType)) {
+    const existing = npc.memories.filter(m => m.eventType === eventType);
+    if (existing.length >= BORING_MEMORY_CAP) {
+      // Replace oldest boring memory instead of adding
+      const oldest = existing.reduce((a, b) => a.tick < b.tick ? a : b);
+      const idx = npc.memories.indexOf(oldest);
+      if (idx !== -1) npc.memories.splice(idx, 1);
+    }
+  }
   const mem = createMemory(eventType, subject, value, valence, tick);
   addMemory(npc, mem);
 }
@@ -161,6 +188,51 @@ function memoryOpinionEffect(mem) {
     case 'bandit_attack':
       delta.satisfaction = -weight * 0.3;
       delta.taxSentiment = weight * 0.2;  // want protection
+      break;
+    case 'drought':
+      delta.satisfaction = -weight * 0.4;
+      delta.leaderApproval = -weight * 0.1;
+      break;
+    case 'harsh_winter':
+      delta.satisfaction = -weight * 0.4;
+      delta.leaderApproval = -weight * 0.15;
+      break;
+    case 'winter_death':
+      delta.satisfaction = -weight * 0.5;
+      delta.leaderApproval = -weight * 0.2;
+      break;
+    case 'plague':
+      delta.satisfaction = -weight * 0.5;
+      delta.leaderApproval = -weight * 0.3;
+      break;
+    case 'flood':
+      delta.satisfaction = -weight * 0.4;
+      break;
+    case 'fire':
+      delta.satisfaction = -weight * 0.3;
+      break;
+    case 'raid':
+      delta.satisfaction = -weight * 0.4;
+      delta.taxSentiment = weight * 0.3;  // want defense spending
+      delta.leaderApproval = -weight * 0.15;
+      break;
+    case 'prophet':
+      delta.satisfaction = mem.valence * weight * 0.2;
+      delta.leaderApproval = mem.valence * weight * 0.15;
+      break;
+    case 'discovery':
+      delta.satisfaction = weight * 0.3;
+      delta.leaderApproval = weight * 0.1;
+      break;
+    case 'bountiful_year':
+      delta.satisfaction = weight * 0.3;
+      break;
+    case 'traders':
+      delta.satisfaction = weight * 0.2;
+      break;
+    case 'coup':
+      delta.satisfaction = mem.valence * weight * 0.3;
+      delta.leaderApproval = mem.valence * weight * 0.4;
       break;
   }
   return delta;
