@@ -1,0 +1,41 @@
+{
+  "name": "law.immigration",
+  "description": "ORD-006: When population < 20 and treasury > 200, attract an immigrant",
+  "passed": "Y1-M4-D01",
+
+  "containers": [
+    {"name": "CITIZENS",   "kind": "simple", "entity_type": "Citizen"},
+    {"name": "TREASURY",   "kind": "simple", "entity_type": "Pool"},
+    {"name": "CENSUS",     "kind": "simple", "entity_type": "Census"}
+  ],
+
+  "moves": [],
+
+  "tensions": [
+    {
+      "name": "attract_immigrant",
+      "priority": 5,
+      "match": [
+        {"bind": "census", "in": "CENSUS", "select": "first",
+         "where": {"op": "<", "left": {"prop": "population", "of": "census"}, "right": 20}},
+        {"bind": "treasury", "in": "TREASURY", "select": "first",
+         "where": {"op": ">", "left": {"prop": "gold", "of": "treasury"}, "right": 200}}
+      ],
+      "emit": [
+        {"create": "CITIZENS", "properties": {
+          "name": "Immigrant",
+          "gold": 5,
+          "food": 3,
+          "job": "none",
+          "wage": 0,
+          "location": "gate",
+          "active": true
+        }},
+        {"set": "census", "property": "population",
+         "value": {"op": "+", "left": {"prop": "population", "of": "census"}, "right": 1}},
+        {"set": "treasury", "property": "gold",
+         "value": {"op": "-", "left": {"prop": "gold", "of": "treasury"}, "right": 10}}
+      ]
+    }
+  ]
+}

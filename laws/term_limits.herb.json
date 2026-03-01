@@ -1,0 +1,28 @@
+{
+  "name": "law.term_limits",
+  "description": "ORD-003: No leader may serve more than 3 consecutive terms",
+  "passed": "Y1-M4-D01",
+
+  "containers": [
+    {"name": "LEADERS", "kind": "simple", "entity_type": "Leader"}
+  ],
+
+  "moves": [],
+
+  "tensions": [
+    {
+      "name": "enforce_term_limit",
+      "priority": 25,
+      "match": [
+        {"bind": "leader", "in": "LEADERS",
+         "where": {"op": "&&",
+           "left": {"op": ">=", "left": {"prop": "consecutive_terms", "of": "leader"}, "right": 3},
+           "right": {"op": "==", "left": {"prop": "active", "of": "leader"}, "right": true}}}
+      ],
+      "emit": [
+        {"set": "leader", "property": "active", "value": false},
+        {"set": "leader", "property": "ineligible", "value": true}
+      ]
+    }
+  ]
+}

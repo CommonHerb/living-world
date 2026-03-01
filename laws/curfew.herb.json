@@ -1,0 +1,36 @@
+{
+  "name": "law.curfew",
+  "description": "ORD-005: NPCs in the market after hour 20 are fined 2 gold",
+  "passed": "Y1-M4-D01",
+
+  "containers": [
+    {"name": "CITIZENS", "kind": "simple", "entity_type": "Citizen"},
+    {"name": "TREASURY", "kind": "simple", "entity_type": "Pool"},
+    {"name": "CLOCK",    "kind": "simple", "entity_type": "Clock"}
+  ],
+
+  "moves": [],
+
+  "tensions": [
+    {
+      "name": "enforce_curfew",
+      "priority": 12,
+      "match": [
+        {"bind": "clock", "in": "CLOCK", "select": "first",
+         "where": {"op": ">=", "left": {"prop": "hour", "of": "clock"}, "right": 20}},
+        {"bind": "citizen", "in": "CITIZENS",
+         "where": {"op": "&&",
+           "left": {"op": "==", "left": {"prop": "location", "of": "citizen"}, "right": "market"},
+           "right": {"op": ">=", "left": {"prop": "gold", "of": "citizen"}, "right": 2}}},
+        {"bind": "treasury", "in": "TREASURY", "select": "first"}
+      ],
+      "emit": [
+        {"set": "citizen", "property": "gold",
+         "value": {"op": "-", "left": {"prop": "gold", "of": "citizen"}, "right": 2}},
+        {"set": "citizen", "property": "location", "value": "home"},
+        {"set": "treasury", "property": "gold",
+         "value": {"op": "+", "left": {"prop": "gold", "of": "treasury"}, "right": 2}}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "name": "law.minimum_wage",
+  "description": "ORD-004: Every employed NPC earns at least 1 gold per tick; treasury supplements the difference",
+  "passed": "Y1-M4-D01",
+
+  "containers": [
+    {"name": "CITIZENS", "kind": "simple", "entity_type": "Citizen"},
+    {"name": "TREASURY", "kind": "simple", "entity_type": "Pool"}
+  ],
+
+  "moves": [],
+
+  "tensions": [
+    {
+      "name": "supplement_wage",
+      "priority": 10,
+      "match": [
+        {"bind": "citizen", "in": "CITIZENS",
+         "where": {"op": "&&",
+           "left": {"op": "!=", "left": {"prop": "job", "of": "citizen"}, "right": "none"},
+           "right": {"op": "<", "left": {"prop": "wage", "of": "citizen"}, "right": 1}}},
+        {"bind": "treasury", "in": "TREASURY", "select": "first",
+         "where": {"op": ">", "left": {"prop": "gold", "of": "treasury"}, "right": 0}}
+      ],
+      "emit": [
+        {"set": "treasury", "property": "gold",
+         "value": {"op": "-", "left": {"prop": "gold", "of": "treasury"},
+                   "right": {"op": "-", "left": 1, "right": {"prop": "wage", "of": "citizen"}}}},
+        {"set": "citizen", "property": "wage", "value": 1}
+      ]
+    }
+  ]
+}

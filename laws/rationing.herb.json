@@ -1,0 +1,55 @@
+{
+  "name": "law.rationing",
+  "description": "ORD-002: Emergency rationing when granary < 50; lifted when granary > 100",
+  "passed": "Y1-M4-D01",
+
+  "containers": [
+    {"name": "CITIZENS",  "kind": "simple", "entity_type": "Citizen"},
+    {"name": "GRANARY",   "kind": "simple", "entity_type": "Pool"},
+    {"name": "STATE",     "kind": "simple", "entity_type": "Flag"}
+  ],
+
+  "moves": [],
+
+  "tensions": [
+    {
+      "name": "activate_rationing",
+      "priority": 20,
+      "match": [
+        {"bind": "granary", "in": "GRANARY", "select": "first"},
+        {"guard": {"op": "<", "left": {"prop": "food", "of": "granary"}, "right": 50}},
+        {"bind": "state", "in": "STATE", "select": "first",
+         "where": {"op": "==", "left": {"prop": "rationing", "of": "state"}, "right": false}}
+      ],
+      "emit": [
+        {"set": "state", "property": "rationing", "value": true}
+      ]
+    },
+    {
+      "name": "lift_rationing",
+      "priority": 20,
+      "match": [
+        {"bind": "granary", "in": "GRANARY", "select": "first"},
+        {"guard": {"op": ">", "left": {"prop": "food", "of": "granary"}, "right": 100}},
+        {"bind": "state", "in": "STATE", "select": "first",
+         "where": {"op": "==", "left": {"prop": "rationing", "of": "state"}, "right": true}}
+      ],
+      "emit": [
+        {"set": "state", "property": "rationing", "value": false}
+      ]
+    },
+    {
+      "name": "enforce_rationing",
+      "priority": 15,
+      "match": [
+        {"bind": "state", "in": "STATE", "select": "first",
+         "where": {"op": "==", "left": {"prop": "rationing", "of": "state"}, "right": true}},
+        {"bind": "citizen", "in": "CITIZENS",
+         "where": {"op": ">", "left": {"prop": "food", "of": "citizen"}, "right": 2}}
+      ],
+      "emit": [
+        {"set": "citizen", "property": "food", "value": 2}
+      ]
+    }
+  ]
+}
