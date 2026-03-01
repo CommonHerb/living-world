@@ -14,6 +14,7 @@ const { tickMigration } = require('./migration');
 const { tickTrade } = require('./trade');
 const { tickSocial } = require('./social');
 const { tickSeasons, tickRandomEvents } = require('./seasons');
+const { tickNewspaper } = require('./newspaper');
 
 function createWorld(seed) {
   const rng = new RNG(seed);
@@ -121,7 +122,10 @@ function tickWorld(world) {
     // Phase 11: Religion
     tickReligion(settlement, world.tick);
 
-    // Phase 12: Faction assignment
+    // Phase 12: Newspaper
+    tickNewspaper(settlement, world);
+
+    // Phase 13: Faction assignment
     if (world.tick % 5 === 0) {
       const { factions, unaligned } = detectFactions(settlement);
       for (const f of factions) {

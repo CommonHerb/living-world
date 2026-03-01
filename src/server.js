@@ -9,8 +9,9 @@ const {
 } = require('./display');
 const { formatChronicle } = require('./chronicle');
 const {
-  formatNewspaper, formatTalk, formatSettlementLook, formatHistory,
+  formatNewspaper: formatNewspaperLegacy, formatTalk, formatSettlementLook, formatHistory,
 } = require('./narrative');
+const { formatEdition, formatArchive, PUBLISH_FREQUENCY } = require('./newspaper');
 const { formatDiagnostics } = require('./diagnostics');
 const { detectFactions } = require('./politics');
 const { getOverallMood } = require('./npc');
@@ -167,6 +168,9 @@ class SimulationServer {
       factions,
       market,
       relations,
+      latestEdition: s.newspaper && s.newspaper.editions.length > 0
+        ? s.newspaper.editions[s.newspaper.editions.length - 1]
+        : null,
     };
   }
 
@@ -284,8 +288,22 @@ class SimulationServer {
 
       case 'news': {
         const sub = args[0];
-        if (sub === 'all') return formatNewspaper(this.world, 30, sid);
-        return formatNewspaper(this.world, 5, sid);
+        const settlement = this.world.settlements.find(s => s.id === sid) || this.world.settlements[0];
+        if (sub === 'archive') return formatArchive(settlement, parseInt(args[1]) || 10);
+        if (sub === 'all' || sub === 'old') return formatNewspaperLegacy(this.world, 30, sid);
+        // View specific edition by number
+        if (sub && !isNaN(parseInt(sub)) && settlement.newspaper) {
+          const edNum = parseInt(sub);
+          const ed = settlement.newspaper.editions.find(e => e.number === edNum);
+          if (ed) return formatEdition(ed);
+          return `Edition ${edNum} not found. Try "news archive" to see available editions.`;
+        }
+        // Show latest newspaper edition
+        if (settlement.newspaper && settlement.newspaper.editions.length > 0) {
+          const latest = settlement.newspaper.editions[settlement.newspaper.editions.length - 1];
+          return formatEdition(latest);
+        }
+        return 'No newspaper editions published yet. The presses are warming up...';
       }
 
       case 'market':
