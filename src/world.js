@@ -1,46 +1,69 @@
 'use strict';
 
 const { RNG } = require('./rng');
-const { createNPC } = require('./npc');
+const { createSettlement } = require('./settlement');
 const { tickEconomy } = require('./economy');
 const { tickOpinions } = require('./opinions');
 const { tickGossip } = require('./gossip');
 const { tickMemoryDecay } = require('./memory');
 const { tickElection, tickTreasuryCheck } = require('./politics');
-const { createChronicle, recordEvent } = require('./chronicle');
-const { initMarket } = require('./market');
-const { tickFamily, getLivingNPCs } = require('./family');
+const { tickFamily } = require('./family');
+const { tickCrime, tickMilitiaVote } = require('./crime');
+const { tickReligion } = require('./religion');
+const { tickMigration } = require('./migration');
+const { tickTrade } = require('./trade');
+const { tickSocial } = require('./social');
 
 function createWorld(seed) {
   const rng = new RNG(seed);
-  const npcs = [];
-  for (let i = 0; i < 25; i++) {
-    npcs.push(createNPC(rng, i));
-  }
 
-  const chronicle = createChronicle();
+  // Create settlements
+  const cudderland = createSettlement({
+    id: 'cudderland',
+    name: 'Cudderland',
+    location: { x: 20, y: 20 },
+    seed: seed,
+    populationCount: 25,
+    government: 'council',
+    startingTreasury: 150,
+    startingGranary: 80,
+  });
 
-  // Record founding event
-  recordEvent(chronicle, 0, 'founding',
-    [{ id: -1, name: 'Millhaven', role: 'settlement' }],
-    'The settlement of Millhaven was founded. 25 souls begin a new life.',
-    { isFirst: true, affectsAll: true, affectedCount: 25 }
-  );
+  const thornwall = createSettlement({
+    id: 'thornwall',
+    name: 'Thornwall',
+    location: { x: 80, y: 60 },
+    seed: seed ^ 0xDEADBEEF, // different seed for different personalities
+    populationCount: 15,
+    government: 'monarchy',
+    startingTreasury: 100,
+    startingGranary: 50,
+  });
 
   return {
     seed,
     tick: 0,
-    granary: 80,
-    treasury: 150,
-    taxRate: 0.20,
-    council: [npcs[1].id, npcs[npcs.length - 1].id, npcs[13].id],
-    npcs,
-    events: [],
-    history: [],
-    chronicle,
-    market: initMarket(),
+    settlements: [cudderland, thornwall],
+    events: [],     // world-level events (migration, trade)
+    history: [],    // world-level history
     rng,
   };
+}
+
+/**
+ * Get a settlement by id or name.
+ */
+function getSettlement(world, idOrName) {
+  return world.settlements.find(s => 
+    s.id === idOrName || s.name.toLowerCase() === idOrName.toLowerCase()
+  );
+}
+
+/**
+ * Get the "active" settlement (first one / default).
+ */
+function getDefaultSettlement(world) {
+  return world.settlements[0];
 }
 
 function tickWorld(world) {
@@ -48,30 +71,63 @@ function tickWorld(world) {
   world.events = [];
   world.tickRng = new RNG(world.seed ^ (world.tick * 2654435761));
 
-  // Phase 1: Production & Consumption
-  tickEconomy(world);
+  // Tick each settlement independently
+  for (const settlement of world.settlements) {
+    settlement.events = [];
+    settlement.tick = world.tick;
+    settlement.tickRng = new RNG(settlement.seed ^ (world.tick * 2654435761));
 
-  // Phase 2: Opinion Update (memory-driven)
-  tickOpinions(world);
+    // Phase 1: Production & Consumption
+    tickEconomy(settlement, world.tick);
 
-  // Phase 3: Gossip (memory transmission)
-  tickGossip(world);
+    // Phase 2: Opinion Update
+    tickOpinions(settlement, world.tick);
 
-  // Phase 4: Memory Decay
-  tickMemoryDecay(world);
+    // Phase 3: Gossip
+    tickGossip(settlement, world.tick);
 
-  // Phase 5: Elections (every 30 ticks)
-  if (world.tick % 30 === 0) {
-    tickElection(world);
+    // Phase 4: Memory Decay
+    tickMemoryDecay(settlement);
+
+    // Phase 5: Elections / Succession
+    if (world.tick % 30 === 0) {
+      tickElection(settlement, world.tick);
+    }
+
+    // Phase 6: Treasury Check
+    tickTreasuryCheck(settlement, world.tick);
+
+    // Phase 7: Family
+    tickFamily(settlement, world.tick);
+
+    // Phase 8: Social (speech bubbles, interactions, clustering, mood)
+    tickSocial(settlement, world.tick);
+
+    // Phase 9: Crime & Conflict
+    tickCrime(settlement);
+
+    // Phase 10: Militia vote (every 30 ticks)
+    if (world.tick % 30 === 0) {
+      tickMilitiaVote(settlement);
+    }
+
+    // Phase 11: Religion
+    tickReligion(settlement, world.tick);
+
+    // Archive settlement events
+    for (const evt of settlement.events) {
+      settlement.history.push(evt);
+    }
+    if (settlement.history.length > 200) {
+      settlement.history = settlement.history.slice(-200);
+    }
   }
 
-  // Phase 6: Granary Check
-  tickTreasuryCheck(world);
+  // Phase 8: Inter-settlement systems
+  tickMigration(world);
+  tickTrade(world);
 
-  // Phase 7: Family (marriage, births, aging, death)
-  tickFamily(world);
-
-  // Archive events
+  // Archive world events
   for (const evt of world.events) {
     world.history.push(evt);
   }
@@ -79,7 +135,13 @@ function tickWorld(world) {
     world.history = world.history.slice(-200);
   }
 
-  return world.events;
+  // Collect all events for return
+  const allEvents = [...world.events];
+  for (const s of world.settlements) {
+    allEvents.push(...s.events);
+  }
+
+  return allEvents;
 }
 
-module.exports = { createWorld, tickWorld };
+module.exports = { createWorld, tickWorld, getSettlement, getDefaultSettlement };

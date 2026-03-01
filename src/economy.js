@@ -7,26 +7,19 @@ const { COMMODITIES, COMMODITY_INFO, generateOrders, clearMarket, updateBeliefs,
 /**
  * Phase 3: Multi-commodity production → market → consumption
  * 
- * Flow each tick:
- * 1. PRODUCE: NPCs generate goods into inventory based on job
- * 2. MARKET: BazaarBot double auction clears trades
- * 3. CONSUME: NPCs eat food (grain or flour). Hunger if they can't.
- * 4. GUARDS: Paid from treasury, buy food on market like everyone else
- * 5. BANKRUPTCY: Broke NPCs switch jobs
+ * Now operates per-settlement. Each settlement has its own independent economy.
  */
 
-function tickEconomy(world) {
-  const rng = world.tickRng;
+function tickEconomy(settlement, tick) {
+  const rng = settlement.tickRng;
   let hungerCount = 0;
   const hungryNPCs = [];
 
-  // === Filter: only living adult NPCs participate in economy ===
-  const activeNpcs = world.npcs.filter(n => n.alive !== false && !n.isChild);
+  const activeNpcs = settlement.npcs.filter(n => n.alive !== false && !n.isChild);
 
   // === 0. SUBSISTENCE ===
-  // Small base income prevents total liquidity collapse
   for (const npc of activeNpcs) {
-    npc.gold += 0.5;  // foraging, odd jobs, barter equivalent
+    npc.gold += 0.5;
   }
 
   // === 1. PRODUCTION ===
@@ -38,10 +31,9 @@ function tickEconomy(world) {
         break;
       }
       case 'miller': {
-        // Convert grain → flour (2 grain → 3 flour)
         const grainAvail = npc.inventory.grain;
         const batchesFromGrain = Math.floor(grainAvail / 2);
-        const batches = Math.min(batchesFromGrain, 2); // max 2 batches/tick
+        const batches = Math.min(batchesFromGrain, 2);
         if (batches > 0) {
           npc.inventory.grain -= batches * 2;
           npc.inventory.flour += batches * 3;
@@ -59,7 +51,6 @@ function tickEconomy(world) {
         break;
       }
       case 'smith': {
-        // Convert wood + stone → tools (1 wood + 1 stone → 1 tool)
         const batches = Math.min(npc.inventory.wood, npc.inventory.stone, 2);
         if (batches > 0) {
           npc.inventory.wood -= batches;
@@ -69,10 +60,9 @@ function tickEconomy(world) {
         break;
       }
       case 'guard': {
-        // Guards produce nothing tradeable — paid from treasury
-        const stipend = Math.min(2, Math.max(1, Math.floor(world.treasury * 0.03)));
-        if (world.treasury >= stipend) {
-          world.treasury -= stipend;
+        const stipend = Math.min(2, Math.max(1, Math.floor(settlement.treasury * 0.03)));
+        if (settlement.treasury >= stipend) {
+          settlement.treasury -= stipend;
           npc.gold += stipend;
         }
         break;
@@ -81,9 +71,10 @@ function tickEconomy(world) {
   }
 
   // === 2. MARKET (BazaarBot) ===
-  const { bids, asks } = generateOrders(world);
-  const tradeResults = clearMarket(world, bids, asks);
-  updateBeliefs(world, tradeResults, tradeResults.failures);
+  // generateOrders/clearMarket/updateBeliefs now work on settlement
+  const { bids, asks } = generateOrders(settlement);
+  const tradeResults = clearMarket(settlement, bids, asks);
+  updateBeliefs(settlement, tradeResults, tradeResults.failures);
 
   const totalTrades = tradeResults.results.length;
   const totalTax = tradeResults.results.reduce((s, t) => s + t.tax, 0);
@@ -93,7 +84,6 @@ function tickEconomy(world) {
     const foodNeeded = npc.genome.metabolism;
     let foodEaten = 0;
 
-    // Prefer flour (higher value), then grain
     if (npc.inventory.flour > 0) {
       const fromFlour = Math.min(npc.inventory.flour, foodNeeded);
       npc.inventory.flour -= fromFlour;
@@ -106,26 +96,21 @@ function tickEconomy(world) {
     }
 
     if (foodEaten >= foodNeeded) {
-      // Well fed — slow satisfaction recovery
       npc.opinions.satisfaction = Math.min(1, npc.opinions.satisfaction + 0.03);
-      // Occasional positive memory from being well-fed
-      if (world.tick % 10 === 0) {
-        formMemory(npc, 'good_trade', 'self', foodEaten, 0.3, world.tick);
+      if (tick % 10 === 0) {
+        formMemory(npc, 'good_trade', 'self', foodEaten, 0.3, tick);
       }
     } else {
-      // HUNGRY — can't eat enough
-      formMemory(npc, 'food_shortage', 'self', npc.gold, -0.5, world.tick);
+      formMemory(npc, 'food_shortage', 'self', npc.gold, -0.5, tick);
       hungerCount++;
       hungryNPCs.push(npc);
       npc.opinions.satisfaction = Math.max(-1, npc.opinions.satisfaction - 0.05);
     }
   }
 
-  // === 3b. JOB SWITCHING (rational self-interest) ===
-  // Hungry non-farmers may switch to farming
+  // === 3b. JOB SWITCHING ===
   for (const npc of hungryNPCs) {
     if (npc.job !== 'farmer' && npc.job !== 'guard') {
-      // Higher chance if very hungry (low satisfaction) and risk-tolerant
       const switchChance = 0.08 + npc.genome.riskTolerance * 0.07;
       if (rng.random() < switchChance) {
         const oldJob = npc.job;
@@ -134,13 +119,13 @@ function tickEconomy(world) {
         for (const c of COMMODITIES) {
           npc.idealInventory[c] = ideal[c] || 0;
         }
-        world.events.push({
-          tick: world.tick,
+        settlement.events.push({
+          tick,
           type: 'job_switch',
           text: `${npc.name} switched from ${oldJob} to farmer out of hunger.`,
         });
-        if (world.chronicle) {
-          recordEvent(world.chronicle, world.tick, 'job_switch',
+        if (settlement.chronicle) {
+          recordEvent(settlement.chronicle, tick, 'job_switch',
             [{ id: npc.id, name: npc.name, role: oldJob }],
             `${npc.name} abandoned ${oldJob} work to become a farmer, driven by hunger.`,
             { affectedCount: 1 }
@@ -150,22 +135,21 @@ function tickEconomy(world) {
     }
   }
 
-  // === 3c. GOOD HARVEST (random weather event) ===
-  // ~10% chance per tick of a good harvest boosting all farmer output
+  // === 3c. GOOD HARVEST ===
   if (rng.random() < 0.10) {
     const farmers = activeNpcs.filter(n => n.job === 'farmer');
     const bonus = rng.int(2, 4);
     for (const f of farmers) {
       f.inventory.grain += bonus;
     }
-    world.events.push({
-      tick: world.tick,
+    settlement.events.push({
+      tick,
       type: 'good_harvest',
       text: `Good harvest! Farmers each gained ${bonus} extra grain.`,
     });
-    if (world.chronicle) {
-      recordEvent(world.chronicle, world.tick, 'good_harvest',
-        [{ id: -1, name: 'Millhaven', role: 'settlement' }],
+    if (settlement.chronicle) {
+      recordEvent(settlement.chronicle, tick, 'good_harvest',
+        [{ id: -1, name: settlement.name, role: 'settlement' }],
         `Favorable weather brought a bountiful harvest. Each farmer gained ${bonus} extra grain.`,
         { affectsAll: false, affectedCount: farmers.length }
       );
@@ -173,18 +157,16 @@ function tickEconomy(world) {
   }
 
   // === 4. EMERGENCY RELIEF ===
-  // If many hungry and treasury has funds, buy grain and distribute
-  if (hungerCount > activeNpcs.length * 0.3 && world.treasury > 5) {
-    const relief = Math.min(Math.floor(world.treasury * 0.3), hungerCount * 2);
-    world.treasury -= relief;
-    // Distribute as grain to hungry NPCs
+  if (hungerCount > activeNpcs.length * 0.3 && settlement.treasury > 5) {
+    const relief = Math.min(Math.floor(settlement.treasury * 0.3), hungerCount * 2);
+    settlement.treasury -= relief;
     const perNPC = Math.max(1, Math.floor(relief / hungerCount));
     for (const npc of hungryNPCs) {
       npc.inventory.grain += perNPC;
-      formMemory(npc, 'relief', 'treasury', perNPC, 0.5, world.tick);
+      formMemory(npc, 'relief', 'treasury', perNPC, 0.5, tick);
     }
-    if (world.chronicle) {
-      recordEvent(world.chronicle, world.tick, 'relief',
+    if (settlement.chronicle) {
+      recordEvent(settlement.chronicle, tick, 'relief',
         [{ id: -1, name: 'Treasury', role: 'institution' }],
         `Emergency relief: ${relief} gold spent feeding ${hungerCount} hungry residents.`,
         { affectsAll: false, affectedCount: hungerCount }
@@ -193,16 +175,16 @@ function tickEconomy(world) {
   }
 
   // === 5. BANKRUPTCY CHECK ===
-  const bankruptcies = handleBankruptcy(world);
+  const bankruptcies = handleBankruptcy(settlement);
   for (const b of bankruptcies) {
-    world.events.push({
-      tick: world.tick,
+    settlement.events.push({
+      tick,
       type: 'bankruptcy',
       text: `${b.npc.name} went bankrupt as ${b.oldJob}, became ${b.newJob}.`,
     });
-    formMemory(b.npc, 'bankruptcy', 'self', 0, -0.9, world.tick);
-    if (world.chronicle) {
-      recordEvent(world.chronicle, world.tick, 'bankruptcy',
+    formMemory(b.npc, 'bankruptcy', 'self', 0, -0.9, tick);
+    if (settlement.chronicle) {
+      recordEvent(settlement.chronicle, tick, 'bankruptcy',
         [{ id: b.npc.id, name: b.npc.name, role: b.oldJob }],
         `${b.npc.name} went bankrupt as ${b.oldJob} and switched to ${b.newJob}.`,
         { affectedCount: 1 }
@@ -212,30 +194,29 @@ function tickEconomy(world) {
 
   // === EVENTS ===
   if (hungerCount > 0) {
-    world.events.push({
-      tick: world.tick,
+    settlement.events.push({
+      tick,
       type: 'hunger',
       text: `${hungerCount} NPC${hungerCount > 1 ? 's' : ''} went hungry.`,
     });
-    if (world.chronicle) {
-      recordEvent(world.chronicle, world.tick, 'hunger',
+    if (settlement.chronicle) {
+      recordEvent(settlement.chronicle, tick, 'hunger',
         hungryNPCs.slice(0, 5).map(n => ({ id: n.id, name: n.name, role: n.job })),
-        `${hungerCount} residents went hungry. Treasury: ${Math.floor(world.treasury)}.`,
+        `${hungerCount} residents went hungry. Treasury: ${Math.floor(settlement.treasury)}.`,
         { affectedCount: hungerCount }
       );
     }
   }
 
-  // Market summary event
   const priceStr = COMMODITIES
-    .filter(c => world.market.lastClearingPrices[c] !== null)
-    .map(c => `${c}:${world.market.lastClearingPrices[c].toFixed(1)}g`)
+    .filter(c => settlement.market.lastClearingPrices[c] !== null)
+    .map(c => `${c}:${settlement.market.lastClearingPrices[c].toFixed(1)}g`)
     .join(' ');
 
-  world.events.push({
-    tick: world.tick,
+  settlement.events.push({
+    tick,
     type: 'economy',
-    text: `Market: ${totalTrades} trades, ${totalTax.toFixed(1)}g taxed. Treasury: ${Math.floor(world.treasury)}g. Prices: ${priceStr || 'no trades'}`,
+    text: `Market: ${totalTrades} trades, ${totalTax.toFixed(1)}g taxed. Treasury: ${Math.floor(settlement.treasury)}g. Prices: ${priceStr || 'no trades'}`,
   });
 }
 

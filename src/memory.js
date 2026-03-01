@@ -56,8 +56,8 @@ function formMemory(npc, eventType, subject, value, valence, tick) {
   addMemory(npc, mem);
 }
 
-function tickMemoryDecay(world) {
-  for (const npc of world.npcs) {
+function tickMemoryDecay(settlement) {
+  for (const npc of settlement.npcs) {
     for (let i = npc.memories.length - 1; i >= 0; i--) {
       npc.memories[i].fidelity *= DECAY_RATE;
       if (npc.memories[i].fidelity < FORGET_THRESHOLD) {

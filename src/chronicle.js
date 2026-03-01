@@ -25,6 +25,17 @@ const SIGNIFICANCE_BASE = {
   birth: 40,
   death: 70,
   maturation: 20,
+  crime: 40,
+  crime_caught: 55,
+  trial: 65,
+  fine: 35,
+  exile: 75,
+  exile_return: 30,
+  feud: 80,
+  bandit_raid: 50,
+  militia: 70,
+  unjust_acquittal: 45,
+  political_argument: 30,
 };
 
 const SIGNIFICANCE_THRESHOLD = 20;

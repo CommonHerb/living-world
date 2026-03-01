@@ -13,6 +13,7 @@ const {
 } = require('./narrative');
 const { formatDiagnostics } = require('./diagnostics');
 const { HerbVM } = require('./herb-vm');
+const { formatCrime } = require('./crime');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -142,6 +143,19 @@ class SimulationServer {
       case 'chronicle':
         return formatChronicle(this.world.chronicle, parseInt(args[0]) || 20);
 
+      case 'crime': {
+        // Show crime stats for all settlements
+        const crimeLines = [];
+        if (this.world.settlements) {
+          for (const s of this.world.settlements) {
+            crimeLines.push(`\n── ${s.name} ──`);
+            crimeLines.push(formatCrime(s));
+          }
+          return crimeLines.join('\n');
+        }
+        return formatCrime(this.world);
+      }
+
       case 'seed':
         return `Seed: ${this.world.seed}`;
 
@@ -266,15 +280,36 @@ class SimulationServer {
 }
 
 function formatTickSummary(world, events) {
-  const lines = [`\nDay ${world.tick}:`];
+  const { getTimeOfDay } = require('./social');
+  const time = getTimeOfDay(world.tick);
+  const timeLabel = time === 'day' ? '☀️ Day' : time === 'evening' ? '🌅 Evening' : '🌙 Night';
+  const lines = [`\nDay ${world.tick} (${timeLabel}):`];
+
+  // Show non-economy, non-social events first
   for (const e of events) {
-    if (e.type !== 'economy') {
+    if (e.type !== 'economy' && !e.type.startsWith('speech') && !e.type.startsWith('social_')) {
       lines.push(`  ${e.text}`);
     }
   }
-  // Always show economy summary
+
+  // Economy summary
   const econ = events.find(e => e.type === 'economy');
   if (econ) lines.push(`  ${econ.text}`);
+
+  // Social events (speech bubbles + interactions) — show a sample
+  const socialEvents = events.filter(e => e.type === 'speech' || e.type.startsWith('social_'));
+  if (socialEvents.length > 0) {
+    lines.push('');
+    // Show up to 5 social events to avoid flooding
+    const shown = socialEvents.slice(0, 5);
+    for (const se of shown) {
+      lines.push(`  ${se.text}`);
+    }
+    if (socialEvents.length > 5) {
+      lines.push(`  ... and ${socialEvents.length - 5} more social moments.`);
+    }
+  }
+
   return lines.join('\n');
 }
 

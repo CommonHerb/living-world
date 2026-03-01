@@ -3,17 +3,29 @@
 const { formMemory } = require('./memory');
 const { recordEvent } = require('./chronicle');
 
-function tickElection(world) {
-  const rng = world.tickRng;
-  const npcs = world.npcs.filter(n => n.alive !== false && !n.isChild);
+/**
+ * Elections for council governments.
+ * Monarchy succession for monarchies.
+ * Now operates per-settlement.
+ */
 
-  // Candidacy: assertiveness, ambition (risk tolerance), AND dissatisfaction all matter
+function tickElection(settlement, tick) {
+  if (settlement.government === 'monarchy') {
+    return tickMonarchySuccession(settlement, tick);
+  }
+  return tickCouncilElection(settlement, tick);
+}
+
+function tickCouncilElection(settlement, tick) {
+  const rng = settlement.tickRng;
+  const npcs = settlement.npcs.filter(n => n.alive !== false && !n.isChild);
+  if (npcs.length < 3) return;
+
   const candidacyScore = (npc) =>
     npc.genome.assertiveness * 0.4 +
     npc.genome.riskTolerance * 0.3 +
-    Math.max(0, -npc.opinions.satisfaction) * 0.3;  // unhappy people run for office
+    Math.max(0, -npc.opinions.satisfaction) * 0.3;
 
-  // Top scorers become candidates (at least 4 to ensure competition)
   const scored = npcs.map(n => ({ npc: n, score: candidacyScore(n) }))
     .sort((a, b) => b.score - a.score);
   let candidates = scored.slice(0, Math.max(4, Math.min(6, scored.filter(s => s.score > 0.4).length)))
@@ -21,9 +33,8 @@ function tickElection(world) {
 
   const votes = new Map();
   for (const c of candidates) votes.set(c.id, 0);
-  const incumbentSet = new Set(world.council);
+  const incumbentSet = new Set(settlement.council);
 
-  // Track average satisfaction to determine if times are bad
   const avgSatisfaction = npcs.reduce((s, n) => s + n.opinions.satisfaction, 0) / npcs.length;
 
   for (const voter of npcs) {
@@ -31,28 +42,22 @@ function tickElection(world) {
     let bestScore = -Infinity;
 
     for (const cand of candidates) {
-      // Policy alignment (tax sentiment match)
       const policyDist = Math.abs(voter.opinions.taxSentiment - cand.opinions.taxSentiment);
-      let score = -policyDist;  // lower distance = higher score
+      let score = -policyDist;
 
-      // Challenger bonus: when times are bad, voters want change
       const isIncumbent = incumbentSet.has(cand.id);
       if (isIncumbent && avgSatisfaction < -0.2) {
-        score -= 0.15 + Math.abs(avgSatisfaction) * 0.2;  // penalty scales with misery
+        score -= 0.15 + Math.abs(avgSatisfaction) * 0.2;
       }
-
-      // Stubborn voters slightly prefer incumbents (status quo bias) — only in good times
       if (isIncumbent && voter.genome.stubbornness > 0.6 && avgSatisfaction > -0.2) {
         score += 0.1;
       }
-
-      // Term memory: voter remembers if incumbent was in charge during bad personal times
       if (isIncumbent) {
         const crisisMemories = voter.memories.filter(m =>
           (m.eventType === 'crisis' || m.eventType === 'food_shortage') && m.fidelity > 0.3
         );
         if (crisisMemories.length > 3) {
-          score -= 0.2;  // "you were in charge when things were bad"
+          score -= 0.2;
         }
       }
 
@@ -65,47 +70,46 @@ function tickElection(world) {
   }
 
   const sorted = [...votes.entries()].sort((a, b) => b[1] - a[1]);
-  const oldCouncil = [...world.council];
-  world.council = sorted.slice(0, 3).map(([id]) => id);
-  const councilNPCs = world.council.map(id => npcs.find(n => n.id === id));
+  const oldCouncil = [...settlement.council];
+  settlement.council = sorted.slice(0, 3).map(([id]) => id);
+  const councilNPCs = settlement.council.map(id => npcs.find(n => n.id === id));
 
-  const oldTaxRate = world.taxRate;
+  const oldTaxRate = settlement.taxRate;
   const avgSentiment = councilNPCs.reduce((s, n) => s + n.opinions.taxSentiment, 0) / councilNPCs.length;
-  world.taxRate = Math.round((0.275 + avgSentiment * 0.225) * 100) / 100;
-  world.taxRate = Math.max(0.05, Math.min(0.50, world.taxRate));
+  settlement.taxRate = Math.round((0.275 + avgSentiment * 0.225) * 100) / 100;
+  settlement.taxRate = Math.max(0.05, Math.min(0.50, settlement.taxRate));
 
   const councilNames = councilNPCs.map(n => `${n.name} (${n.job[0].toUpperCase()})`).join(', ');
   const oldPct = Math.round(oldTaxRate * 100);
-  const newPct = Math.round(world.taxRate * 100);
+  const newPct = Math.round(settlement.taxRate * 100);
+  const changesLeadership = !oldCouncil.every(id => settlement.council.includes(id));
 
-  const changesLeadership = !oldCouncil.every(id => world.council.includes(id));
-
-  world.events.push({
-    tick: world.tick,
+  settlement.events.push({
+    tick,
     type: 'election',
     text: `ELECTION: ${councilNames} elected. Tax rate: ${oldPct}% → ${newPct}%.`,
   });
 
-  world.events.push({
-    tick: world.tick,
+  settlement.events.push({
+    tick,
     type: 'election_detail',
     text: `Votes: ${sorted.map(([id, v]) => `${npcs.find(n => n.id === id).name}: ${v}`).join(', ')}`,
   });
 
-  if (world.chronicle) {
-    recordEvent(world.chronicle, world.tick, 'election',
+  if (settlement.chronicle) {
+    recordEvent(settlement.chronicle, tick, 'election',
       councilNPCs.map(n => ({ id: n.id, name: n.name, role: 'council' })),
       `${councilNames} elected to council. Tax: ${oldPct}% → ${newPct}%.`,
       { changesLeadership, affectsAll: true, affectedCount: npcs.length }
     );
   }
 
-  if (world.taxRate !== oldTaxRate) {
-    const raised = world.taxRate > oldTaxRate;
+  if (settlement.taxRate !== oldTaxRate) {
+    const raised = settlement.taxRate > oldTaxRate;
     const tag = raised ? 'tax_raised' : 'tax_lowered';
 
-    if (world.chronicle) {
-      recordEvent(world.chronicle, world.tick, 'tax_change',
+    if (settlement.chronicle) {
+      recordEvent(settlement.chronicle, tick, 'tax_change',
         councilNPCs.map(n => ({ id: n.id, name: n.name, role: 'council' })),
         `Tax rate ${raised ? 'raised' : 'lowered'} from ${oldPct}% to ${newPct}%.`,
         { affectsAll: true, affectedCount: npcs.length }
@@ -114,66 +118,143 @@ function tickElection(world) {
 
     for (const npc of npcs) {
       const valence = raised ? -0.5 * npc.genome.fairnessSens : 0.3 * npc.genome.fairnessSens;
-      formMemory(npc, tag, 'council', world.taxRate, valence, world.tick);
+      formMemory(npc, tag, 'council', settlement.taxRate, valence, tick);
     }
   }
 
   for (const npc of npcs) {
-    const winnersIncludeMe = world.council.includes(npc.id);
+    const winnersIncludeMe = settlement.council.includes(npc.id);
     const valence = winnersIncludeMe ? 0.3 : 0.1;
-    formMemory(npc, 'election', 'council', world.tick, valence, world.tick);
+    formMemory(npc, 'election', 'council', tick, valence, tick);
   }
 }
 
 /**
- * Treasury check — replaces granary check.
- * Low treasury = crisis (can't pay guards, no emergency relief).
- * High treasury = surplus.
+ * Monarchy succession — the monarch rules until death or overthrow.
+ * Check for coups when satisfaction is very low.
  */
-function tickTreasuryCheck(world) {
-  if (world.treasury < 5) {
-    if (world.tick % 15 === 0) {
-      const livingNpcs = world.npcs.filter(n => n.alive !== false && !n.isChild);
-      for (const npc of livingNpcs) {
-        formMemory(npc, 'crisis', 'treasury', world.treasury, -0.7, world.tick);
+function tickMonarchySuccession(settlement, tick) {
+  const rng = settlement.tickRng;
+  const npcs = settlement.npcs.filter(n => n.alive !== false && !n.isChild);
+  if (npcs.length === 0) return;
+
+  const monarchId = settlement.council[0];
+  const monarch = npcs.find(n => n.id === monarchId);
+
+  // If monarch is dead or gone, pick new one
+  if (!monarch) {
+    const sorted = [...npcs].sort((a, b) => b.genome.assertiveness - a.genome.assertiveness);
+    settlement.council = [sorted[0].id];
+    settlement.events.push({
+      tick,
+      type: 'succession',
+      text: `${sorted[0].name} has claimed the throne of ${settlement.name}.`,
+    });
+    recordEvent(settlement.chronicle, tick, 'succession',
+      [{ id: sorted[0].id, name: sorted[0].name, role: 'monarch' }],
+      `${sorted[0].name} claimed the throne after the previous ruler's departure.`,
+      { changesLeadership: true, affectsAll: true, affectedCount: npcs.length }
+    );
+    return;
+  }
+
+  // Monarch sets tax rate based on their own sentiment
+  const oldTaxRate = settlement.taxRate;
+  settlement.taxRate = Math.round((0.275 + monarch.opinions.taxSentiment * 0.225) * 100) / 100;
+  settlement.taxRate = Math.max(0.05, Math.min(0.50, settlement.taxRate));
+
+  // Coup check: if average satisfaction is very low and an assertive challenger exists
+  const avgSat = npcs.reduce((s, n) => s + n.opinions.satisfaction, 0) / npcs.length;
+  if (avgSat < -0.4) {
+    const challengers = npcs.filter(n => 
+      n.id !== monarchId && 
+      n.genome.assertiveness > 0.7 && 
+      n.opinions.satisfaction < -0.3
+    );
+    if (challengers.length > 0 && rng.random() < 0.15) {
+      const challenger = challengers.sort((a, b) => b.genome.assertiveness - a.genome.assertiveness)[0];
+      settlement.council = [challenger.id];
+      settlement.events.push({
+        tick,
+        type: 'coup',
+        text: `COUP: ${challenger.name} has overthrown ${monarch.name} as ruler of ${settlement.name}!`,
+      });
+      recordEvent(settlement.chronicle, tick, 'coup',
+        [{ id: challenger.id, name: challenger.name, role: 'usurper' },
+         { id: monarch.id, name: monarch.name, role: 'deposed' }],
+        `${challenger.name} overthrew ${monarch.name} in a coup. The people's anger had reached a breaking point.`,
+        { changesLeadership: true, affectsAll: true, affectedCount: npcs.length, crisisLevel: 2 }
+      );
+      for (const npc of npcs) {
+        formMemory(npc, 'coup', settlement.name, tick, 
+          npc.opinions.satisfaction < 0 ? 0.3 : -0.5, tick);
       }
     }
-    world.events.push({
-      tick: world.tick,
-      type: 'crisis',
-      text: `TREASURY CRISIS: Only ${Math.floor(world.treasury)}g remaining!`,
+  }
+
+  if (settlement.taxRate !== oldTaxRate) {
+    const raised = settlement.taxRate > oldTaxRate;
+    const oldPct = Math.round(oldTaxRate * 100);
+    const newPct = Math.round(settlement.taxRate * 100);
+
+    settlement.events.push({
+      tick,
+      type: 'decree',
+      text: `Royal decree: Tax rate ${raised ? 'raised' : 'lowered'} from ${oldPct}% to ${newPct}%.`,
     });
 
-    if (world.chronicle) {
-      recordEvent(world.chronicle, world.tick, 'crisis',
-        [{ id: -1, name: 'Millhaven', role: 'settlement' }],
-        `Treasury crisis! Only ${Math.floor(world.treasury)}g. Guards may go unpaid.`,
-        { affectsAll: true, affectedCount: world.npcs.length, crisisLevel: 3 }
+    for (const npc of npcs) {
+      const valence = raised ? -0.5 * npc.genome.fairnessSens : 0.3 * npc.genome.fairnessSens;
+      formMemory(npc, raised ? 'tax_raised' : 'tax_lowered', 'monarch', settlement.taxRate, valence, tick);
+    }
+  }
+}
+
+/**
+ * Treasury check — per settlement.
+ */
+function tickTreasuryCheck(settlement, tick) {
+  const livingNpcs = settlement.npcs.filter(n => n.alive !== false && !n.isChild);
+
+  if (settlement.treasury < 5) {
+    if (tick % 15 === 0) {
+      for (const npc of livingNpcs) {
+        formMemory(npc, 'crisis', 'treasury', settlement.treasury, -0.7, tick);
+      }
+    }
+    settlement.events.push({
+      tick,
+      type: 'crisis',
+      text: `TREASURY CRISIS: Only ${Math.floor(settlement.treasury)}g remaining!`,
+    });
+    if (settlement.chronicle) {
+      recordEvent(settlement.chronicle, tick, 'crisis',
+        [{ id: -1, name: settlement.name, role: 'settlement' }],
+        `Treasury crisis! Only ${Math.floor(settlement.treasury)}g. Guards may go unpaid.`,
+        { affectsAll: true, affectedCount: livingNpcs.length, crisisLevel: 3 }
       );
     }
-  } else if (world.treasury > 100) {
-    const livingNpcs2 = world.npcs.filter(n => n.alive !== false && !n.isChild);
-    for (const npc of livingNpcs2) {
-      formMemory(npc, 'surplus', 'treasury', world.treasury, 0.3, world.tick);
+  } else if (settlement.treasury > 100) {
+    for (const npc of livingNpcs) {
+      formMemory(npc, 'surplus', 'treasury', settlement.treasury, 0.3, tick);
     }
-    world.events.push({
-      tick: world.tick,
+    settlement.events.push({
+      tick,
       type: 'surplus',
-      text: `Treasury surplus: ${Math.floor(world.treasury)}g stored.`,
+      text: `Treasury surplus: ${Math.floor(settlement.treasury)}g stored.`,
     });
-
-    if (world.chronicle) {
-      recordEvent(world.chronicle, world.tick, 'surplus',
-        [{ id: -1, name: 'Millhaven', role: 'settlement' }],
-        `Surplus! Treasury holds ${Math.floor(world.treasury)}g.`,
+    if (settlement.chronicle) {
+      recordEvent(settlement.chronicle, tick, 'surplus',
+        [{ id: -1, name: settlement.name, role: 'settlement' }],
+        `Surplus! Treasury holds ${Math.floor(settlement.treasury)}g.`,
         { affectsAll: true }
       );
     }
   }
 }
 
-function detectFactions(world) {
-  const npcs = world.npcs.filter(n => n.alive !== false && !n.isChild);
+function detectFactions(settlement) {
+  const npcs = settlement.npcs.filter(n => n.alive !== false && !n.isChild);
   const antiTax = npcs.filter(n => n.opinions.taxSentiment < -0.1);
   const proTax = npcs.filter(n => n.opinions.taxSentiment > 0.1);
   const unaligned = npcs.filter(n => Math.abs(n.opinions.taxSentiment) <= 0.1);

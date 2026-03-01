@@ -4,21 +4,15 @@ const { distance, getRelationship } = require('./npc');
 const { computeMemoryBasedOpinions } = require('./memory');
 
 /**
- * Phase 2: Opinions are now DERIVED from memories.
- * 
- * Each tick:
- * 1. Compute memory-based opinion targets (what memories say you should think)
- * 2. Blend with social influence from neighbors
- * 3. Apply stubbornness as resistance to change
+ * Phase 2: Opinions derived from memories.
+ * Now operates per-settlement.
  */
-function tickOpinions(world) {
-  const npcs = world.npcs.filter(n => n.alive !== false && !n.isChild);
+function tickOpinions(settlement, tick) {
+  const npcs = settlement.npcs.filter(n => n.alive !== false && !n.isChild);
 
   for (const npc of npcs) {
-    // 1. Memory-based opinion target
     const memTarget = computeMemoryBasedOpinions(npc);
 
-    // 2. Social influence from nearby NPCs
     const neighbors = npcs.filter(
       other => other.id !== npc.id && distance(npc.position, other.position) <= npc.genome.vision
     );
@@ -39,52 +33,32 @@ function tickOpinions(world) {
       socialTarget.satisfaction /= weightSum;
     }
 
-    // 3. Personality-driven baseline opinions (genome anchors)
     const personalityAnchor = {
-      taxSentiment: (npc.genome.fairnessSens - 0.5) * 1.2,  // high fairness → strongly pro-tax
+      taxSentiment: (npc.genome.fairnessSens - 0.5) * 1.2,
       leaderApproval: (npc.genome.agreeableness - 0.5) * 0.5,
       satisfaction: (npc.genome.riskTolerance - 0.3) * 0.3,
     };
-    // Guards should lean pro-tax (they're paid by treasury)
-    if (npc.job === 'guard') {
-      personalityAnchor.taxSentiment += 0.4;
-    }
-    // Farmers lean anti-tax (they produce, taxes take from them)
-    if (npc.job === 'farmer') {
-      personalityAnchor.taxSentiment -= 0.15;
-    }
+    if (npc.job === 'guard') personalityAnchor.taxSentiment += 0.4;
+    if (npc.job === 'farmer') personalityAnchor.taxSentiment -= 0.15;
 
-    // 4. Blend: personality anchor + memory + social, stubbornness resists
     const s = npc.genome.stubbornness;
-    const memWeight = (1 - s) * 0.25;      // Reduced from 0.4 — less herd convergence
-    const socialWeight = (1 - s) * npc.genome.agreeableness * 0.08;  // Reduced social pull
-    const anchorWeight = 0.06;  // Constant pull back to personality baseline
+    const memWeight = (1 - s) * 0.25;
+    const socialWeight = (1 - s) * npc.genome.agreeableness * 0.08;
+    const anchorWeight = 0.06;
 
     for (const dim of ['taxSentiment', 'leaderApproval', 'satisfaction']) {
       const current = npc.opinions[dim];
-      
-      // Personality anchor pull (always active, creates diversity)
       let newVal = current + anchorWeight * (personalityAnchor[dim] - current);
-
-      // Memory pull
       newVal += memWeight * (memTarget[dim] - newVal);
-      
-      // Social pull
       if (neighbors.length > 0) {
         newVal += socialWeight * (socialTarget[dim] - newVal);
       }
-
-      // Individual noise (tiny random walk based on risk tolerance)
-      const noise = (world.tickRng.random() - 0.5) * 0.04 * npc.genome.riskTolerance;
+      const noise = (settlement.tickRng.random() - 0.5) * 0.04 * npc.genome.riskTolerance;
       newVal += noise;
-
-      // Natural drift toward neutral (very slow)
       newVal *= 0.998;
-
       npc.opinions[dim] = clamp(newVal, -1, 1);
     }
 
-    // Decay emotional state
     npc.emotionalState *= 0.95;
   }
 }
