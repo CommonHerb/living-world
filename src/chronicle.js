@@ -13,9 +13,14 @@ const SIGNIFICANCE_BASE = {
   hunger: 40,
   tax_change: 60,
   surplus: 30,
-  gossip: 5,      // below threshold, won't be recorded
-  economy: 5,     // below threshold
+  gossip: 5,
+  economy: 5,
   memory_formed: 3,
+  bankruptcy: 70,
+  relief: 60,
+  price_spike: 50,
+  market_crash: 100,
+  gossip_distortion: 25,
 };
 
 const SIGNIFICANCE_THRESHOLD = 20;

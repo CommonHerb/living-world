@@ -6,8 +6,9 @@ const { tickEconomy } = require('./economy');
 const { tickOpinions } = require('./opinions');
 const { tickGossip } = require('./gossip');
 const { tickMemoryDecay } = require('./memory');
-const { tickElection, tickGranaryCheck } = require('./politics');
+const { tickElection, tickTreasuryCheck } = require('./politics');
 const { createChronicle, recordEvent } = require('./chronicle');
+const { initMarket } = require('./market');
 
 function createWorld(seed) {
   const rng = new RNG(seed);
@@ -29,12 +30,14 @@ function createWorld(seed) {
     seed,
     tick: 0,
     granary: 80,
+    treasury: 150,
     taxRate: 0.20,
     council: [npcs[1].id, npcs[npcs.length - 1].id, npcs[13].id],
     npcs,
     events: [],
     history: [],
     chronicle,
+    market: initMarket(),
     rng,
   };
 }
@@ -62,7 +65,7 @@ function tickWorld(world) {
   }
 
   // Phase 6: Granary Check
-  tickGranaryCheck(world);
+  tickTreasuryCheck(world);
 
   // Archive events
   for (const evt of world.events) {

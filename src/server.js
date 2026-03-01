@@ -4,7 +4,8 @@ const { WebSocketServer } = require('ws');
 const { createWorld, tickWorld } = require('./world');
 const {
   formatStatus, formatRecentEvents, formatPeople, formatLook,
-  formatMap, formatFactions, formatStats, formatHelp, formatChronicleDisplay,
+  formatMap, formatFactions, formatStats, formatHelp, formatMarket,
+  formatChronicleDisplay,
 } = require('./display');
 const { formatChronicle } = require('./chronicle');
 
@@ -82,6 +83,10 @@ class SimulationServer {
         const name = input.split(/\s+/).slice(1).join(' ');
         return formatLook(this.world, name);
       }
+
+      case 'market':
+      case 'm':
+        return formatMarket(this.world);
 
       case 'factions':
         return formatFactions(this.world);

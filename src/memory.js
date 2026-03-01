@@ -22,6 +22,10 @@ const BASE_FIDELITY = {
   gossip_heard: 0.6,
   crisis: 0.95,
   surplus: 0.6,
+  bankruptcy: 0.95,
+  relief: 0.8,
+  good_trade: 0.5,
+  bad_trade: 0.7,
 };
 
 function createMemory(eventType, subject, value, valence, tick, fidelity) {
@@ -95,10 +99,26 @@ function memoryOpinionEffect(mem) {
       delta.leaderApproval = mem.valence * weight * 0.05;
       break;
     case 'gossip_heard':
-      // Gossip-received memories influence based on their original type tag
-      // The valence already encodes the direction
       delta.satisfaction = mem.valence * weight * 0.1;
       delta.leaderApproval = mem.valence * weight * 0.05;
+      break;
+    case 'bankruptcy':
+      delta.satisfaction = -weight * 0.4;
+      delta.taxSentiment = -weight * 0.3;  // blame taxes
+      delta.leaderApproval = -weight * 0.3;
+      break;
+    case 'relief':
+      // Treasury saved me → pro-tax
+      delta.satisfaction = weight * 0.2;
+      delta.taxSentiment = weight * 0.3;
+      delta.leaderApproval = weight * 0.15;
+      break;
+    case 'good_trade':
+      delta.satisfaction = weight * 0.05;
+      break;
+    case 'bad_trade':
+      delta.satisfaction = -weight * 0.05;
+      delta.taxSentiment = -weight * 0.1;  // blame taxes for bad prices
       break;
   }
   return delta;

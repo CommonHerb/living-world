@@ -63,7 +63,6 @@ function tickElection(world) {
     text: `Votes: ${sorted.map(([id, v]) => `${npcs.find(n => n.id === id).name}: ${v}`).join(', ')}`,
   });
 
-  // Chronicle: election
   if (world.chronicle) {
     recordEvent(world.chronicle, world.tick, 'election',
       councilNPCs.map(n => ({ id: n.id, name: n.name, role: 'council' })),
@@ -72,12 +71,10 @@ function tickElection(world) {
     );
   }
 
-  // Tax change → memory for everyone
   if (world.taxRate !== oldTaxRate) {
     const raised = world.taxRate > oldTaxRate;
     const tag = raised ? 'tax_raised' : 'tax_lowered';
 
-    // Chronicle: tax change
     if (world.chronicle) {
       recordEvent(world.chronicle, world.tick, 'tax_change',
         councilNPCs.map(n => ({ id: n.id, name: n.name, role: 'council' })),
@@ -92,7 +89,6 @@ function tickElection(world) {
     }
   }
 
-  // Everyone remembers the election
   for (const npc of npcs) {
     const winnersIncludeMe = world.council.includes(npc.id);
     const valence = winnersIncludeMe ? 0.3 : 0.1;
@@ -100,41 +96,45 @@ function tickElection(world) {
   }
 }
 
-function tickGranaryCheck(world) {
-  if (world.granary < 10) {
-    // Only form crisis memories every 5 ticks to avoid flooding
+/**
+ * Treasury check — replaces granary check.
+ * Low treasury = crisis (can't pay guards, no emergency relief).
+ * High treasury = surplus.
+ */
+function tickTreasuryCheck(world) {
+  if (world.treasury < 5) {
     if (world.tick % 5 === 0) {
       for (const npc of world.npcs) {
-        formMemory(npc, 'crisis', 'granary', world.granary, -0.7, world.tick);
+        formMemory(npc, 'crisis', 'treasury', world.treasury, -0.7, world.tick);
       }
     }
     world.events.push({
       tick: world.tick,
       type: 'crisis',
-      text: `FOOD CRISIS: Granary at ${world.granary} food!`,
+      text: `TREASURY CRISIS: Only ${Math.floor(world.treasury)}g remaining!`,
     });
 
     if (world.chronicle) {
       recordEvent(world.chronicle, world.tick, 'crisis',
         [{ id: -1, name: 'Millhaven', role: 'settlement' }],
-        `Food crisis! Granary at ${world.granary}. Population distressed.`,
+        `Treasury crisis! Only ${Math.floor(world.treasury)}g. Guards may go unpaid.`,
         { affectsAll: true, affectedCount: world.npcs.length, crisisLevel: 3 }
       );
     }
-  } else if (world.granary > 100) {
+  } else if (world.treasury > 100) {
     for (const npc of world.npcs) {
-      formMemory(npc, 'surplus', 'granary', world.granary, 0.3, world.tick);
+      formMemory(npc, 'surplus', 'treasury', world.treasury, 0.3, world.tick);
     }
     world.events.push({
       tick: world.tick,
       type: 'surplus',
-      text: `Granary surplus: ${world.granary} food stored.`,
+      text: `Treasury surplus: ${Math.floor(world.treasury)}g stored.`,
     });
 
     if (world.chronicle) {
       recordEvent(world.chronicle, world.tick, 'surplus',
         [{ id: -1, name: 'Millhaven', role: 'settlement' }],
-        `Surplus! Granary overflowing with ${world.granary} food.`,
+        `Surplus! Treasury holds ${Math.floor(world.treasury)}g.`,
         { affectsAll: true }
       );
     }
@@ -151,14 +151,14 @@ function detectFactions(world) {
   if (antiTax.length >= 2) {
     const avg = antiTax.reduce((s, n) => s + n.opinions.taxSentiment, 0) / antiTax.length;
     factions.push({
-      name: 'The Tillers', emoji: '🌾', desc: 'anti-tax, farmer-heavy',
+      name: 'The Tillers', emoji: '🌾', desc: 'anti-tax, producer-heavy',
       members: antiTax, avgSentiment: avg,
     });
   }
   if (proTax.length >= 2) {
     const avg = proTax.reduce((s, n) => s + n.opinions.taxSentiment, 0) / proTax.length;
     factions.push({
-      name: 'The Shields', emoji: '🛡️', desc: 'pro-tax, guard/miller-heavy',
+      name: 'The Shields', emoji: '🛡️', desc: 'pro-tax, guard/consumer-heavy',
       members: proTax, avgSentiment: avg,
     });
   }
@@ -167,7 +167,7 @@ function detectFactions(world) {
 }
 
 function giniCoefficient(npcs) {
-  const vals = npcs.map(n => n.wealth).sort((a, b) => a - b);
+  const vals = npcs.map(n => n.gold).sort((a, b) => a - b);
   const n = vals.length;
   if (n === 0) return 0;
   const mean = vals.reduce((a, b) => a + b, 0) / n;
@@ -181,4 +181,4 @@ function giniCoefficient(npcs) {
   return sumDiffs / (2 * n * n * mean);
 }
 
-module.exports = { tickElection, tickGranaryCheck, detectFactions, giniCoefficient };
+module.exports = { tickElection, tickTreasuryCheck, detectFactions, giniCoefficient };
