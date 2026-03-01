@@ -1,49 +1,46 @@
 'use strict';
 
 const { WebSocketServer } = require('ws');
-const { createWorld, tickWorld } = require('./world');
+const { createWorld, tickWorld, getSettlement } = require('./world');
 const {
   formatStatus, formatRecentEvents, formatPeople, formatLook,
   formatMap, formatFactions, formatStats, formatHelp, formatMarket,
-  formatChronicleDisplay,
+  formatSettlements,
 } = require('./display');
 const { formatChronicle } = require('./chronicle');
 const {
   formatNewspaper, formatTalk, formatSettlementLook, formatHistory,
 } = require('./narrative');
 const { formatDiagnostics } = require('./diagnostics');
-const { HerbVM } = require('./herb-vm');
-const { formatCrime } = require('./crime');
-const { formatBeliefs } = require('./religion');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
 const DEFAULT_SEED = 48271;
-const TICK_INTERVAL = 1000; // ms
+const TICK_INTERVAL = 1000;
 
 class SimulationServer {
   constructor(port = 3000, seed = DEFAULT_SEED) {
     this.port = port;
     this.world = createWorld(seed);
-    this.vm = new HerbVM();
     this.lawsDir = path.join(__dirname, '..', 'laws');
     this.running = false;
     this.tickTimer = null;
     this.wss = null;
+    // Track active settlement per client
+    this.activeSettlement = new Map(); // ws → settlementId
+  }
+
+  getActiveSettlementId(ws) {
+    return this.activeSettlement.get(ws) || this.world.settlements[0].id;
   }
 
   start() {
-    // Create HTTP server for serving index.html
     this.httpServer = http.createServer((req, res) => {
       if (req.url === '/' || req.url === '/index.html') {
         const htmlPath = path.join(__dirname, '..', 'index.html');
         fs.readFile(htmlPath, (err, data) => {
-          if (err) {
-            res.writeHead(404);
-            res.end('Not found');
-            return;
-          }
+          if (err) { res.writeHead(404); res.end('Not found'); return; }
           res.writeHead(200, { 'Content-Type': 'text/html' });
           res.end(data);
         });
@@ -57,31 +54,37 @@ class SimulationServer {
     this.httpServer.listen(this.port);
     console.log(`Living World server started on http://localhost:${this.port}`);
     console.log(`Seed: ${this.world.seed}`);
+    console.log(`Settlements: ${this.world.settlements.map(s => s.name).join(', ')}`);
 
     this.wss.on('connection', (ws) => {
       console.log('Client connected');
-      ws.send(formatStatus(this.world) + '\n\nRecent Events:\n' + formatRecentEvents(this.world) + '\n\n> ');
+      this.activeSettlement.set(ws, this.world.settlements[0].id);
+      ws.send(formatSettlements(this.world) + '\n\n> ');
 
       ws.on('message', (data) => {
         const input = data.toString().trim();
-        const response = this.handleCommand(input);
+        const response = this.handleCommand(input, ws);
         if (response !== null) {
           ws.send(response + '\n\n> ');
         }
       });
 
-      ws.on('close', () => console.log('Client disconnected'));
+      ws.on('close', () => {
+        console.log('Client disconnected');
+        this.activeSettlement.delete(ws);
+      });
     });
   }
 
-  handleCommand(input) {
+  handleCommand(input, ws) {
     const [cmd, ...args] = input.toLowerCase().split(/\s+/);
+    const sid = this.getActiveSettlementId(ws);
 
     switch (cmd) {
       case 'tick':
       case 't': {
         const count = parseInt(args[0]) || 1;
-        return this.advanceTicks(count);
+        return this.advanceTicks(count, sid);
       }
 
       case 'run':
@@ -101,19 +104,33 @@ class SimulationServer {
 
       case 'status':
       case 's':
-        return formatStatus(this.world) + '\n\nRecent Events:\n' + formatRecentEvents(this.world);
+        return formatStatus(this.world, sid) + '\n\nRecent Events:\n' + formatRecentEvents(this.world, 10, sid);
+
+      case 'settlements':
+        return formatSettlements(this.world);
+
+      case 'goto': {
+        const name = args.join(' ');
+        if (!name) return 'Usage: goto <settlement name>';
+        const target = this.world.settlements.find(s => 
+          s.name.toLowerCase() === name || s.id === name
+        );
+        if (!target) return `No settlement named "${name}". Try: ${this.world.settlements.map(s => s.name).join(', ')}`;
+        this.activeSettlement.set(ws, target.id);
+        return `Now viewing ${target.name}.\n\n` + formatStatus(this.world, target.id);
+      }
 
       case 'map':
-        return formatMap(this.world);
+        return formatMap(this.world, sid);
 
       case 'people':
       case 'p':
-        return formatPeople(this.world);
+        return formatPeople(this.world, sid);
 
       case 'look':
       case 'l': {
         const name = input.split(/\s+/).slice(1).join(' ');
-        if (!name) return formatSettlementLook(this.world);
+        if (!name) return formatSettlementLook(this.world, sid);
         return formatLook(this.world, name);
       }
 
@@ -124,62 +141,39 @@ class SimulationServer {
 
       case 'news': {
         const sub = args[0];
-        if (sub === 'all') return formatNewspaper(this.world, 30);
-        return formatNewspaper(this.world, 5);
+        if (sub === 'all') return formatNewspaper(this.world, 30, sid);
+        return formatNewspaper(this.world, 5, sid);
       }
 
       case 'market':
       case 'm':
-        return formatMarket(this.world);
+        return formatMarket(this.world, sid);
 
       case 'factions':
-        return formatFactions(this.world);
+        return formatFactions(this.world, sid);
 
       case 'stats':
-        return formatStats(this.world);
+        return formatStats(this.world, sid);
 
       case 'history':
-        return formatHistory(this.world);
+        return formatHistory(this.world, sid);
 
       case 'chronicle':
-        return formatChronicle(this.world.chronicle, parseInt(args[0]) || 20);
-
-      case 'crime': {
-        // Show crime stats for all settlements
-        const crimeLines = [];
-        if (this.world.settlements) {
-          for (const s of this.world.settlements) {
-            crimeLines.push(`\n── ${s.name} ──`);
-            crimeLines.push(formatCrime(s));
-          }
-          return crimeLines.join('\n');
-        }
-        return formatCrime(this.world);
-      }
-
-      case 'beliefs':
-      case 'religion': {
-        const beliefLines = [];
-        if (this.world.settlements) {
-          for (const s of this.world.settlements) {
-            beliefLines.push(`\n── ${s.name} ──`);
-            beliefLines.push(formatBeliefs(s));
-          }
-          return beliefLines.join('\n');
-        }
-        return formatBeliefs(this.world);
-      }
+        return formatChronicle(
+          (this.world.settlements.find(s => s.id === sid) || this.world.settlements[0]).chronicle,
+          parseInt(args[0]) || 20
+        );
 
       case 'seed':
         return `Seed: ${this.world.seed}`;
 
       case 'diag':
       case 'diagnostics':
-        return formatDiagnostics(this.world);
+        return formatDiagnostics(this.world, sid);
 
       case 'law':
       case 'laws':
-        return this.handleLaw(input);
+        return this.handleLaw(input, sid);
 
       case 'help':
         return formatHelp();
@@ -192,33 +186,34 @@ class SimulationServer {
     }
   }
 
-  handleLaw(input) {
+  handleLaw(input, settlementId) {
+    const settlement = this.world.settlements.find(s => s.id === settlementId) || this.world.settlements[0];
+    const vm = settlement.vm;
     const parts = input.split(/\s+/);
     const sub = parts[1];
     const arg = parts.slice(2).join(' ');
 
     if (!sub || sub === 'list') {
-      const laws = this.vm.listLaws();
-      if (laws.length === 0) return 'No laws enacted.';
-      const lines = ['=== ACTIVE LAWS ==='];
+      const laws = vm.listLaws();
+      if (laws.length === 0) return `No laws enacted in ${settlement.name}.`;
+      const lines = [`=== ${settlement.name.toUpperCase()} ACTIVE LAWS ===`];
       for (const law of laws) {
-        lines.push(`  ${law.name} — ${law.description} (${law.tensions} tensions, passed ${law.passed})`);
+        lines.push(`  ${law.name} — ${law.description} (${law.tensions} tensions)`);
       }
-      lines.push('', this.vm.status());
+      lines.push('', vm.status());
       return lines.join('\n');
     }
 
     if (sub === 'load') {
       if (!arg) return 'Usage: law load <filename>';
-      // Try relative to laws dir, then absolute
       let filePath = path.join(this.lawsDir, arg);
       if (!fs.existsSync(filePath)) {
         if (!arg.endsWith('.herb.json')) filePath = path.join(this.lawsDir, arg + '.herb.json');
       }
       if (!fs.existsSync(filePath)) return `File not found: ${arg}`;
       try {
-        const name = this.vm.loadFile(filePath);
-        return `Law enacted: ${name}\n\n${this.vm.status()}`;
+        const name = vm.loadFile(filePath);
+        return `Law enacted in ${settlement.name}: ${name}\n\n${vm.status()}`;
       } catch (e) {
         return `Error loading law: ${e.message}`;
       }
@@ -226,16 +221,16 @@ class SimulationServer {
 
     if (sub === 'repeal') {
       if (!arg) return 'Usage: law repeal <name>';
-      const laws = this.vm.listLaws();
+      const laws = vm.listLaws();
       const match = laws.find(l => l.name === arg || l.name === `law.${arg}`);
-      if (!match) return `No active law named "${arg}". Use "law list" to see active laws.`;
-      this.vm.unload(match.name);
-      return `Law repealed: ${match.name}`;
+      if (!match) return `No active law named "${arg}" in ${settlement.name}.`;
+      vm.unload(match.name);
+      return `Law repealed in ${settlement.name}: ${match.name}`;
     }
 
     if (sub === 'tick') {
-      const result = this.vm.tick();
-      if (result.iterations === 0) return 'HERB VM tick: fixpoint reached immediately (no tensions fired).';
+      const result = vm.tick();
+      if (result.iterations === 0) return 'HERB VM tick: fixpoint reached immediately.';
       const lines = [`HERB VM tick: ${result.iterations} iterations`];
       for (const entry of result.log) {
         if (entry.tension) lines.push(`  ${entry.tension}: ${entry.actions} actions`);
@@ -244,35 +239,23 @@ class SimulationServer {
       return lines.join('\n');
     }
 
-    if (sub === 'status') {
-      return this.vm.status();
-    }
+    if (sub === 'status') return vm.status();
 
     return 'Usage: law [list|load <file>|repeal <name>|tick|status]';
   }
 
-  advanceTicks(count) {
+  advanceTicks(count, settlementId) {
     const lines = [];
     for (let i = 0; i < count; i++) {
       const events = tickWorld(this.world);
       if (count === 1) {
-        lines.push(formatTickSummary(this.world, events));
+        lines.push(formatTickSummary(this.world, events, settlementId));
       }
     }
     if (count > 1) {
       lines.push(`Advanced ${count} ticks to Day ${this.world.tick}.`);
       lines.push('');
-      lines.push(formatStatus(this.world));
-      // Show notable events from the batch
-      const notable = this.world.history
-        .slice(-count * 3)
-        .filter(e => e.type === 'election' || e.type === 'crisis' || e.type === 'hunger');
-      if (notable.length > 0) {
-        lines.push('\nNotable events:');
-        for (const e of notable.slice(-10)) {
-          lines.push(`  Day ${e.tick}: ${e.text}`);
-        }
-      }
+      lines.push(formatSettlements(this.world));
     }
     return lines.join('\n');
   }
@@ -280,7 +263,7 @@ class SimulationServer {
   broadcast(msg) {
     if (!this.wss) return;
     for (const client of this.wss.clients) {
-      if (client.readyState === 1) { // OPEN
+      if (client.readyState === 1) {
         client.send(msg + '\n\n> ');
       }
     }
@@ -293,35 +276,25 @@ class SimulationServer {
   }
 }
 
-function formatTickSummary(world, events) {
-  const { getTimeOfDay } = require('./social');
-  const time = getTimeOfDay(world.tick);
-  const timeLabel = time === 'day' ? '☀️ Day' : time === 'evening' ? '🌅 Evening' : '🌙 Night';
-  const lines = [`\nDay ${world.tick} (${timeLabel}):`];
-
-  // Show non-economy, non-social events first
-  for (const e of events) {
-    if (e.type !== 'economy' && !e.type.startsWith('speech') && !e.type.startsWith('social_')) {
-      lines.push(`  ${e.text}`);
+function formatTickSummary(world, events, settlementId) {
+  const lines = [`\nDay ${world.tick}:`];
+  
+  // Group events by settlement
+  for (const s of world.settlements) {
+    const sEvents = s.events.filter(e => e.type !== 'economy' && e.type !== 'gossip');
+    if (sEvents.length > 0) {
+      lines.push(`  [${s.name}]`);
+      for (const e of sEvents) {
+        lines.push(`    ${e.text}`);
+      }
     }
+    const econ = s.events.find(e => e.type === 'economy');
+    if (econ) lines.push(`  [${s.name}] ${econ.text}`);
   }
 
-  // Economy summary
-  const econ = events.find(e => e.type === 'economy');
-  if (econ) lines.push(`  ${econ.text}`);
-
-  // Social events (speech bubbles + interactions) — show a sample
-  const socialEvents = events.filter(e => e.type === 'speech' || e.type.startsWith('social_'));
-  if (socialEvents.length > 0) {
-    lines.push('');
-    // Show up to 5 social events to avoid flooding
-    const shown = socialEvents.slice(0, 5);
-    for (const se of shown) {
-      lines.push(`  ${se.text}`);
-    }
-    if (socialEvents.length > 5) {
-      lines.push(`  ... and ${socialEvents.length - 5} more social moments.`);
-    }
+  // World events (migration, trade)
+  for (const e of world.events) {
+    lines.push(`  [WORLD] ${e.text}`);
   }
 
   return lines.join('\n');

@@ -36,6 +36,11 @@ const SIGNIFICANCE_BASE = {
   militia: 70,
   unjust_acquittal: 45,
   political_argument: 30,
+  emigration: 50,
+  immigration: 50,
+  trade: 30,
+  succession: 80,
+  coup: 150,
 };
 
 const SIGNIFICANCE_THRESHOLD = 20;

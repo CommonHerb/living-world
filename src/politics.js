@@ -90,11 +90,15 @@ function tickCouncilElection(settlement, tick) {
     text: `ELECTION: ${councilNames} elected. Tax rate: ${oldPct}% → ${newPct}%.`,
   });
 
-  settlement.events.push({
+  const detailEvent = {
     tick,
     type: 'election_detail',
     text: `Votes: ${sorted.map(([id, v]) => `${npcs.find(n => n.id === id).name}: ${v}`).join(', ')}`,
-  });
+  };
+  settlement.events.push(detailEvent);
+  // Keep a permanent election log for diagnostics
+  if (!settlement.electionHistory) settlement.electionHistory = [];
+  settlement.electionHistory.push(detailEvent);
 
   if (settlement.chronicle) {
     recordEvent(settlement.chronicle, tick, 'election',

@@ -1,25 +1,17 @@
 'use strict';
 
-/**
- * Phase 4: Narrative Chronicle — transforms raw chronicle entries
- * into readable, story-like text.
- */
-
 const { detectFactions } = require('./politics');
 
-/**
- * Generate a narrative string from a chronicle entry + world context.
- */
-function narrateEntry(entry, world) {
+function narrateEntry(entry, settlement) {
   const day = entry.tick;
   const actors = entry.actors || [];
   const actorNames = actors.map(a => a.name);
+  const sName = settlement ? settlement.name : 'the settlement';
 
   switch (entry.eventType) {
     case 'founding':
-      return `On the first day, ${actorNames[0] || 'a settlement'} was founded. ` +
-        `Twenty-five souls gathered to carve a life from the wilderness. ` +
-        `The fields were untilled, the granaries empty, and the future uncertain.`;
+      return `On the first day, ${actorNames[0] || sName} was founded. ` +
+        `Souls gathered to carve a life from the wilderness.`;
 
     case 'election': {
       const councilMembers = actors.filter(a => a.role === 'council');
@@ -28,10 +20,9 @@ function narrateEntry(entry, world) {
       const oldTax = taxMatch ? taxMatch[1] : '?';
       const newTax = taxMatch ? taxMatch[2] : '?';
 
-      // Find factions for color
       let factionNote = '';
-      if (world) {
-        const { factions } = detectFactions(world);
+      if (settlement) {
+        const { factions } = detectFactions(settlement);
         for (const f of factions) {
           const elected = f.members.filter(m => councilMembers.some(c => c.id === m.id));
           if (elected.length > 0) {
@@ -41,118 +32,89 @@ function narrateEntry(entry, world) {
       }
 
       if (names.length === 3) {
-        return `On day ${day}, ${names[0]}, ${names[1]}, and ${names[2]} were elected to the council. ` +
+        return `On day ${day}, ${names[0]}, ${names[1]}, and ${names[2]} were elected to ${sName}'s council. ` +
           `Taxes shifted from ${oldTax}% to ${newTax}%.${factionNote}`;
       }
-      return `On day ${day}, a new council was elected: ${names.join(', ')}. ` +
+      return `On day ${day}, a new council was elected in ${sName}: ${names.join(', ')}. ` +
         `Tax rate moved from ${oldTax}% to ${newTax}%.${factionNote}`;
     }
+
+    case 'succession':
+      return `Day ${day}: ${actorNames[0] || 'A new ruler'} claimed the throne of ${sName}.`;
+
+    case 'coup':
+      return `Day ${day}: COUP! ${actorNames[0] || 'A challenger'} overthrew ${actorNames[1] || 'the ruler'} in ${sName}. ` +
+        `The old order crumbled.`;
 
     case 'tax_change': {
       const match = entry.outcome.match(/(raised|lowered) from (\d+)% to (\d+)%/);
       if (match) {
-        const direction = match[1];
-        const from = match[2];
-        const to = match[3];
-        if (direction === 'raised') {
-          return `Day ${day}: The council ${direction} taxes from ${from}% to ${to}%. ` +
-            `Farmers grumbled. Guards nodded approvingly.`;
-        } else {
-          return `Day ${day}: Taxes were cut from ${from}% to ${to}%. ` +
-            `The market hummed a little louder.`;
-        }
+        return `Day ${day}: ${sName}'s ${match[1] === 'raised' ? 'taxes rose' : 'taxes fell'} from ${match[2]}% to ${match[3]}%.`;
       }
       return `Day ${day}: ${entry.outcome}`;
     }
 
-    case 'crisis': {
-      const treasuryMatch = entry.outcome.match(/(\d+)g/);
-      const amount = treasuryMatch ? treasuryMatch[1] : '???';
-      return `Day ${day}: CRISIS — The treasury dwindled to just ${amount} gold. ` +
-        `Guards whispered about unpaid wages. The settlement held its breath.`;
-    }
+    case 'crisis':
+      return `Day ${day}: CRISIS in ${sName} — the treasury is nearly empty!`;
 
     case 'hunger': {
       const countMatch = entry.outcome.match(/^(\d+)/);
       const count = countMatch ? countMatch[1] : 'several';
-      const hungerNames = actors.slice(0, 3).map(a => a.name);
-      const nameStr = hungerNames.length > 0
-        ? ` — among them ${hungerNames.join(' and ')}`
-        : '';
-      return `Day ${day}: ${count} residents went hungry${nameStr}. ` +
-        `The smell of baking bread was conspicuously absent.`;
+      return `Day ${day}: ${count} residents of ${sName} went hungry.`;
     }
 
-    case 'surplus': {
-      const goldMatch = entry.outcome.match(/(\d+)g/);
-      const gold = goldMatch ? goldMatch[1] : 'plenty';
-      return `Day ${day}: The treasury swelled to ${gold} gold. ` +
-        `A rare surplus — some called it prosperity, others called it over-taxation.`;
-    }
+    case 'surplus':
+      return `Day ${day}: ${sName}'s treasury swelled with surplus gold.`;
 
-    case 'bankruptcy': {
-      const npcName = actorNames[0] || 'Someone';
-      const oldJob = actors[0]?.role || 'their trade';
-      const newJobMatch = entry.outcome.match(/switched to (.+)\./);
-      const newJob = newJobMatch ? newJobMatch[1] : 'a new trade';
-      return `Day ${day}: ${npcName} went bankrupt as a ${oldJob} and turned to ${newJob}. ` +
-        `Desperate times demand reinvention.`;
-    }
+    case 'bankruptcy':
+      return `Day ${day}: ${actorNames[0] || 'Someone'} in ${sName} went bankrupt.`;
 
-    case 'relief': {
-      const spentMatch = entry.outcome.match(/(\d+) gold spent feeding (\d+)/);
-      if (spentMatch) {
-        return `Day ${day}: The treasury opened its coffers — ${spentMatch[1]} gold spent ` +
-          `to feed ${spentMatch[2]} hungry souls. Not charity, but survival.`;
-      }
-      return `Day ${day}: Emergency relief was distributed. ${entry.outcome}`;
-    }
+    case 'relief':
+      return `Day ${day}: ${sName}'s treasury distributed emergency food relief.`;
 
-    case 'gossip_distortion': {
-      const teller = actors.find(a => a.role === 'teller');
-      const listener = actors.find(a => a.role === 'listener');
-      const origMatch = entry.outcome.match(/Original value: ([\d.]+), transmitted as: ([\d.]+)/);
-      if (teller && listener && origMatch) {
-        const orig = parseFloat(origMatch[1]).toFixed(1);
-        const distorted = parseFloat(origMatch[2]).toFixed(1);
-        return `Day ${day}: ${teller.name} told ${listener.name} a distorted tale. ` +
-          `What was ${orig} became ${distorted} in the retelling. ` +
-          `Rumors have a way of growing legs.`;
-      }
-      return `Day ${day}: A rumor spread through ${actorNames.join(' and ')}. ` +
-        `The truth bent a little further.`;
-    }
+    case 'emigration':
+      return `Day ${day}: ${actorNames[0] || 'A resident'} left ${sName} for greener pastures.`;
 
-    case 'good_harvest': {
-      const bonusMatch = entry.outcome.match(/(\d+) extra grain/);
-      const bonus = bonusMatch ? bonusMatch[1] : 'extra';
-      return `Day ${day}: The weather smiled on Millhaven. ` +
-        `A bountiful harvest brought ${bonus} extra grain to every farmer's stores.`;
-    }
+    case 'immigration':
+      return `Day ${day}: ${actorNames[0] || 'A newcomer'} arrived in ${sName}, seeking a fresh start.`;
 
-    case 'job_switch': {
-      const name = actorNames[0] || 'Someone';
-      return `Day ${day}: ${name} abandoned their old trade to become a farmer, ` +
-        `driven by the gnawing reality of an empty stomach.`;
-    }
+    case 'trade':
+      return `Day ${day}: A trade caravan ${entry.outcome}`;
+
+    case 'gossip_distortion':
+      return `Day ${day}: Rumors spread through ${sName}. The truth bent further.`;
+
+    case 'good_harvest':
+      return `Day ${day}: Bountiful harvest in ${sName}!`;
+
+    case 'marriage':
+      return `Day ${day}: ${actorNames[0] || '?'} and ${actorNames[1] || '?'} were married in ${sName}.`;
+
+    case 'birth':
+      return `Day ${day}: ${actorNames[0] || 'A child'} was born in ${sName}.`;
+
+    case 'death':
+      return `Day ${day}: ${actorNames[0] || 'A resident'} of ${sName} passed away.`;
 
     default:
       return `Day ${day}: ${entry.outcome || entry.eventType}`;
   }
 }
 
-/**
- * Format the newspaper — last N chronicle entries as narrative.
- */
-function formatNewspaper(world, count = 5) {
-  if (!world.chronicle || world.chronicle.entries.length === 0) {
+function formatNewspaper(world, count = 5, settlementId) {
+  const settlement = settlementId
+    ? world.settlements.find(s => s.id === settlementId)
+    : world.settlements[0];
+  if (!settlement) return 'Settlement not found.';
+
+  if (!settlement.chronicle || settlement.chronicle.entries.length === 0) {
     return 'The presses are silent. No news to report.';
   }
 
-  const entries = world.chronicle.entries.slice(-count);
+  const entries = settlement.chronicle.entries.slice(-count);
   const lines = [
     '╔══════════════════════════════════════════════════╗',
-    '║     THE MILLHAVEN CHRONICLE — Daily Gazette     ║',
+    `║   THE ${settlement.name.toUpperCase()} CHRONICLE — Daily Gazette   `,
     `║              Day ${String(world.tick).padStart(4)}                         ║`,
     '╚══════════════════════════════════════════════════╝',
     '',
@@ -161,26 +123,26 @@ function formatNewspaper(world, count = 5) {
   for (const entry of entries.reverse()) {
     const stars = entry.significance >= 100 ? '⚡' :
                   entry.significance >= 60 ? '★' : '·';
-    lines.push(`${stars} ${narrateEntry(entry, world)}`);
+    lines.push(`${stars} ${narrateEntry(entry, settlement)}`);
     lines.push('');
   }
 
-  lines.push(`─── ${world.chronicle.entries.length} entries in the Chronicle ───`);
+  lines.push(`─── ${settlement.chronicle.entries.length} entries in the Chronicle ───`);
   return lines.join('\n');
 }
 
-/**
- * Format talk output — what an NPC says when you approach them.
- */
 function formatTalk(world, name) {
   if (!name) return 'Talk to whom? Usage: talk <name>';
 
-  const npc = world.npcs.find(n => n.name.toLowerCase() === name.toLowerCase());
-  if (!npc) return `No one named "${name}" lives here.`;
+  let npc = null;
+  let settlement = null;
+  for (const s of world.settlements) {
+    npc = s.npcs.find(n => n.name.toLowerCase() === name.toLowerCase() && n.alive !== false);
+    if (npc) { settlement = s; break; }
+  }
+  if (!npc) return `No one named "${name}" lives in any settlement.`;
 
   const lines = [];
-
-  // Greeting based on mood
   const sat = npc.opinions.satisfaction;
   let greeting;
   if (sat > 0.5) greeting = `${npc.name} smiles warmly.`;
@@ -189,69 +151,62 @@ function formatTalk(world, name) {
   else if (sat > -0.5) greeting = `${npc.name} scowls slightly.`;
   else greeting = `${npc.name} barely looks up. Their eyes are tired.`;
 
-  lines.push(greeting);
+  lines.push(`[${settlement.name}] ${greeting}`);
   lines.push('');
 
-  // Job and economic status
   const goldStatus = npc.gold > 50 ? 'doing well' :
                      npc.gold > 20 ? 'getting by' :
                      npc.gold > 5 ? 'struggling' : 'nearly broke';
-  lines.push(`"I'm a ${npc.job}. ${goldStatus === 'doing well' ? 'Business is good.' :
+  lines.push(`"I'm a ${npc.job} here in ${settlement.name}. ${goldStatus === 'doing well' ? 'Business is good.' :
     goldStatus === 'getting by' ? 'Could be worse, I suppose.' :
     goldStatus === 'struggling' ? 'Times are hard.' :
     'I can barely afford to eat.'}" [${Math.floor(npc.gold)}g]`);
 
-  // Political opinion
-  const taxPct = Math.round(world.taxRate * 100);
-  if (npc.opinions.taxSentiment > 0.3) {
-    lines.push(`"Taxes at ${taxPct}%? Fair enough. We need the treasury for hard times."`);
-  } else if (npc.opinions.taxSentiment > 0) {
-    lines.push(`"${taxPct}% tax... it's tolerable, I suppose."`);
-  } else if (npc.opinions.taxSentiment > -0.3) {
-    lines.push(`"${taxPct}% tax is getting steep, if you ask me."`);
+  const taxPct = Math.round(settlement.taxRate * 100);
+  if (settlement.government === 'monarchy') {
+    if (npc.opinions.taxSentiment > 0.3) {
+      lines.push(`"The monarch keeps taxes at ${taxPct}%. Fair enough for order."`);
+    } else if (npc.opinions.taxSentiment < -0.3) {
+      lines.push(`"${taxPct}% tax by royal decree? Tyrant."`);
+    } else {
+      lines.push(`"${taxPct}% tax... the monarch could do worse."`);
+    }
   } else {
-    lines.push(`"${taxPct}% tax is robbery! The council lines its pockets while we starve."`);
+    if (npc.opinions.taxSentiment > 0.3) {
+      lines.push(`"Taxes at ${taxPct}%? Fair enough. We need the treasury."`);
+    } else if (npc.opinions.taxSentiment < -0.3) {
+      lines.push(`"${taxPct}% tax is robbery!"`);
+    } else {
+      lines.push(`"${taxPct}% tax... it's tolerable."`);
+    }
   }
 
-  // Leader approval
-  const councilNames = world.council
-    .map(id => world.npcs.find(n => n.id === id)?.name || '?')
+  const leaderNames = settlement.council
+    .map(id => settlement.npcs.find(n => n.id === id)?.name || '?')
     .join(', ');
   if (npc.opinions.leaderApproval > 0.3) {
-    lines.push(`"The council — ${councilNames} — they're doing alright."`);
+    lines.push(`"${leaderNames}? Doing alright."`);
   } else if (npc.opinions.leaderApproval > -0.3) {
-    lines.push(`"The council? ${councilNames}. Eh. Could do better."`);
+    lines.push(`"${leaderNames}? Eh. Could do better."`);
   } else {
-    lines.push(`"${councilNames}? Don't get me started. This council is useless."`);
+    lines.push(`"${leaderNames}? Don't get me started."`);
   }
 
-  // Recent memory
   if (npc.memories.length > 0) {
     const recent = npc.memories[npc.memories.length - 1];
-    const memText = formatMemoryQuote(recent, world);
     lines.push('');
-    lines.push(memText);
+    lines.push(formatMemoryQuote(recent, world));
   }
 
-  // Gossip — find a memory with low fidelity (distorted)
-  const gossipMem = npc.memories.find(m => m.fidelity < 0.6 && m.fidelity > 0.2);
-  if (gossipMem) {
-    lines.push('');
-    const gossipText = formatGossipQuote(gossipMem, world, npc);
-    lines.push(gossipText);
-  }
-
-  // Faction
   lines.push('');
-  const { factions } = detectFactions(world);
+  const { factions } = detectFactions(settlement);
   const myFaction = factions.find(f => f.members.some(m => m.id === npc.id));
   if (myFaction) {
     lines.push(`${myFaction.emoji} Aligned with ${myFaction.name}`);
   } else {
-    lines.push('⚖️  Unaligned — no strong faction ties');
+    lines.push('⚖️  Unaligned');
   }
 
-  // Satisfaction meter
   const satBar = renderBar(npc.opinions.satisfaction, -1, 1, 20);
   lines.push(`Satisfaction: ${satBar}`);
 
@@ -266,48 +221,19 @@ function formatMemoryQuote(mem, world) {
 
   switch (mem.eventType) {
     case 'tax_raised':
-      return `"I remember ${timeAgo} when they raised taxes to ${(mem.value * 100).toFixed(0)}%..."`;
-    case 'tax_lowered':
-      return `"I remember ${timeAgo} when taxes came down to ${(mem.value * 100).toFixed(0)}%... that was nice."`;
+      return `"I remember ${timeAgo} when they raised taxes..."`;
     case 'food_shortage':
-      return `"${timeAgo}... I went hungry. Had only ${mem.value.toFixed(0)}g to my name."`;
+      return `"${timeAgo}... I went hungry."`;
     case 'crisis':
-      return `"I remember the crisis ${timeAgo}. The treasury had just ${mem.value.toFixed(0)}g."`;
-    case 'election':
-      return `"There was an election ${timeAgo}. Things changed... or didn't."`;
+      return `"I remember the crisis ${timeAgo}."`;
     case 'surplus':
-      return `"${timeAgo}, the treasury was overflowing. ${mem.value.toFixed(0)}g! Felt safe."`;
-    case 'bankruptcy':
-      return `"${timeAgo}... I lost everything. Had to start over."`;
-    case 'relief':
-      return `"The treasury saved me ${timeAgo}. Gave me ${mem.value.toFixed(0)} grain."`;
-    case 'good_trade':
-      return `"Had a decent stretch ${timeAgo}. Belly was full."`;
-    case 'bad_trade':
-      return `"${timeAgo}, I got a raw deal on a trade. Still stings."`;
+      return `"${timeAgo}, the treasury was overflowing."`;
+    case 'migration':
+      return `"I left ${mem.subject} ${timeAgo}. Had to find something better."`;
+    case 'coup':
+      return `"${timeAgo}... the throne changed hands. Wild times."`;
     default:
       return `"Something happened ${timeAgo}... the details are fuzzy."`;
-  }
-}
-
-function formatGossipQuote(mem, world, npc) {
-  // Gossip is a distorted memory — show the distorted value
-  switch (mem.eventType) {
-    case 'tax_raised':
-      return `*lowers voice* "I heard taxes were actually ${(mem.value * 100).toFixed(0)}%... ` +
-        `that's what they told me, anyway." (fidelity: ${mem.fidelity.toFixed(2)})`;
-    case 'tax_lowered':
-      return `*lowers voice* "Word is taxes dropped to ${(mem.value * 100).toFixed(0)}%. ` +
-        `Take it with a grain of salt." (fidelity: ${mem.fidelity.toFixed(2)})`;
-    case 'food_shortage':
-      return `*lowers voice* "I heard someone had only ${mem.value.toFixed(0)}g ` +
-        `during the shortage..." (fidelity: ${mem.fidelity.toFixed(2)})`;
-    case 'crisis':
-      return `*lowers voice* "They say the treasury hit ${mem.value.toFixed(0)}g. ` +
-        `Who knows if it's true." (fidelity: ${mem.fidelity.toFixed(2)})`;
-    default:
-      return `*lowers voice* "I heard something about ${mem.eventType.replace(/_/g, ' ')}..." ` +
-        `(fidelity: ${mem.fidelity.toFixed(2)})`;
   }
 }
 
@@ -317,12 +243,17 @@ function renderBar(value, min, max, width) {
   return '[' + '█'.repeat(Math.max(0, filled)) + '░'.repeat(Math.max(0, width - filled)) + ']';
 }
 
-/**
- * Enhanced look command — settlement overview when no name given.
- */
-function formatSettlementLook(world) {
-  const pop = world.npcs.length;
-  const avgSat = world.npcs.reduce((s, n) => s + n.opinions.satisfaction, 0) / pop;
+function formatSettlementLook(world, settlementId) {
+  const settlement = settlementId
+    ? world.settlements.find(s => s.id === settlementId)
+    : world.settlements[0];
+  if (!settlement) return 'Settlement not found.';
+
+  const living = settlement.npcs.filter(n => n.alive !== false);
+  const adults = living.filter(n => !n.isChild);
+  const avgSat = adults.length > 0
+    ? adults.reduce((s, n) => s + n.opinions.satisfaction, 0) / adults.length
+    : 0;
   
   let marketMood;
   if (avgSat > 0.3) marketMood = 'bustling with life';
@@ -330,12 +261,16 @@ function formatSettlementLook(world) {
   else if (avgSat > -0.3) marketMood = 'subdued and tense';
   else marketMood = 'eerily quiet — people keep their heads down';
 
-  const treasuryDesc = world.treasury > 80 ? 'The treasury is well-stocked.' :
-                       world.treasury > 30 ? 'The treasury holds a modest sum.' :
-                       world.treasury > 10 ? 'The treasury is running low.' :
+  const treasuryDesc = settlement.treasury > 80 ? 'The treasury is well-stocked.' :
+                       settlement.treasury > 30 ? 'The treasury holds a modest sum.' :
+                       settlement.treasury > 10 ? 'The treasury is running low.' :
                        'The treasury is nearly empty.';
 
-  const { factions } = detectFactions(world);
+  const govDesc = settlement.government === 'monarchy'
+    ? `A throne sits at the center, where ${settlement.council.map(id => settlement.npcs.find(n => n.id === id)?.name || '?').join(', ')} rules.`
+    : `The council chamber stands at the center, where ${settlement.council.map(id => settlement.npcs.find(n => n.id === id)?.name || '?').join(', ')} deliberate.`;
+
+  const { factions } = detectFactions(settlement);
   let factionDesc = '';
   if (factions.length >= 2) {
     factionDesc = `\nPolitical tension simmers between ${factions.map(f => `${f.emoji} ${f.name}`).join(' and ')}.`;
@@ -343,80 +278,67 @@ function formatSettlementLook(world) {
     factionDesc = `\n${factions[0].emoji} ${factions[0].name} hold sway over local politics.`;
   }
 
-  const councilNames = world.council
-    .map(id => world.npcs.find(n => n.id === id))
-    .filter(Boolean)
-    .map(n => n.name)
-    .join(', ');
-
-  const lines = [
-    `═══ MILLHAVEN ═══`,
+  return [
+    `═══ ${settlement.name.toUpperCase()} ═══`,
     '',
-    `Millhaven is a small settlement of ${pop} souls.`,
+    `${settlement.name} is a ${settlement.government === 'monarchy' ? 'monarchy' : 'council-governed settlement'} of ${living.length} souls.`,
     `The market is ${marketMood}.`,
-    `The council chamber stands at the center, where ${councilNames} deliberate.`,
-    `${treasuryDesc} (${Math.floor(world.treasury)}g)`,
-    `Tax rate: ${Math.round(world.taxRate * 100)}% | Day ${world.tick}`,
+    govDesc,
+    `${treasuryDesc} (${Math.floor(settlement.treasury)}g)`,
+    `Tax rate: ${Math.round(settlement.taxRate * 100)}% | Day ${world.tick}`,
     factionDesc,
     '',
     `Type "people" to see residents, "talk <name>" to chat, or "look <name>" for details.`,
-  ];
-
-  return lines.join('\n');
+    `Type "settlements" to see all settlements.`,
+  ].join('\n');
 }
 
-/**
- * History command — compressed timeline of major events.
- */
-function formatHistory(world) {
-  if (!world.chronicle || world.chronicle.entries.length === 0) {
+function formatHistory(world, settlementId) {
+  const settlement = settlementId
+    ? world.settlements.find(s => s.id === settlementId)
+    : world.settlements[0];
+  if (!settlement) return 'Settlement not found.';
+
+  if (!settlement.chronicle || settlement.chronicle.entries.length === 0) {
     return 'No history recorded yet.';
   }
 
-  // Filter to significant events only
-  const major = world.chronicle.entries.filter(e => e.significance >= 50);
-  if (major.length === 0) {
-    return 'Nothing of great significance has occurred yet.';
-  }
+  const major = settlement.chronicle.entries.filter(e => e.significance >= 50);
+  if (major.length === 0) return 'Nothing of great significance has occurred yet.';
 
-  const lines = [
-    '═══ HISTORY OF MILLHAVEN ═══',
-    '',
-  ];
+  const lines = [`═══ HISTORY OF ${settlement.name.toUpperCase()} ═══`, ''];
 
-  // Group by election cycles (every 30 ticks)
-  let lastElectionTick = -1;
   for (const entry of major) {
     if (entry.eventType === 'election') {
-      if (lastElectionTick >= 0) lines.push('');
-      lastElectionTick = entry.tick;
-      const councilNames = entry.actors
-        .filter(a => a.role === 'council')
-        .map(a => a.name)
-        .join(', ');
+      const councilNames = entry.actors.filter(a => a.role === 'council').map(a => a.name).join(', ');
       lines.push(`── Day ${entry.tick}: ELECTION ──`);
       lines.push(`   Council: ${councilNames}`);
-      const taxMatch = entry.outcome.match(/Tax:\s*(\d+)%\s*→\s*(\d+)%/);
-      if (taxMatch) lines.push(`   Tax: ${taxMatch[1]}% → ${taxMatch[2]}%`);
     } else if (entry.eventType === 'founding') {
       lines.push(`── Day ${entry.tick}: FOUNDING ──`);
-      lines.push(`   Millhaven established. 25 settlers.`);
+      lines.push(`   ${settlement.name} established.`);
+    } else if (entry.eventType === 'coup') {
+      lines.push(`── Day ${entry.tick}: COUP ──`);
+      lines.push(`   ${entry.outcome}`);
+    } else if (entry.eventType === 'succession') {
+      lines.push(`── Day ${entry.tick}: SUCCESSION ──`);
+      lines.push(`   ${entry.outcome}`);
     } else if (entry.eventType === 'crisis') {
       lines.push(`   ⚠ Day ${entry.tick}: Treasury crisis`);
     } else if (entry.eventType === 'relief') {
       lines.push(`   ♥ Day ${entry.tick}: Emergency relief distributed`);
-    } else if (entry.eventType === 'tax_change') {
-      const match = entry.outcome.match(/(raised|lowered) from (\d+)% to (\d+)%/);
-      if (match) lines.push(`   ◆ Day ${entry.tick}: Tax ${match[1]} ${match[2]}% → ${match[3]}%`);
+    } else if (entry.eventType === 'emigration') {
+      lines.push(`   ← Day ${entry.tick}: ${entry.actors[0]?.name || '?'} emigrated`);
+    } else if (entry.eventType === 'immigration') {
+      lines.push(`   → Day ${entry.tick}: ${entry.actors[0]?.name || '?'} immigrated`);
+    } else if (entry.eventType === 'trade') {
+      lines.push(`   ⇄ Day ${entry.tick}: ${entry.outcome}`);
     } else if (entry.eventType === 'bankruptcy') {
       lines.push(`   ✗ Day ${entry.tick}: ${entry.actors[0]?.name || '?'} went bankrupt`);
-    } else if (entry.eventType === 'market_crash') {
-      lines.push(`   ↓ Day ${entry.tick}: Market crash`);
     }
   }
 
   lines.push('');
-  lines.push(`${major.length} significant events across ${world.tick} days.`);
+  lines.push(`${major.length} significant events.`);
   return lines.join('\n');
 }
 
