@@ -11,6 +11,7 @@ const { formatChronicle } = require('./chronicle');
 const {
   formatNewspaper, formatTalk, formatSettlementLook, formatHistory,
 } = require('./narrative');
+const { formatDiagnostics } = require('./diagnostics');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -140,6 +141,10 @@ class SimulationServer {
 
       case 'seed':
         return `Seed: ${this.world.seed}`;
+
+      case 'diag':
+      case 'diagnostics':
+        return formatDiagnostics(this.world);
 
       case 'help':
         return formatHelp();

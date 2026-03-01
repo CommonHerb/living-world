@@ -251,6 +251,7 @@ function formatHelp() {
     '  stats            Simulation statistics',
     '  history          Timeline of elections & major events',
     '  chronicle        Raw Chronicle entries',
+    '  diag             Edge-of-chaos diagnostics & vitality score',
     '  seed             Show current seed',
     '  help             This message',
     '  quit             Exit',
