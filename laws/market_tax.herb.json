@@ -1,0 +1,40 @@
+{
+  "name": "law.market_tax",
+  "description": "ORD-001: 25% tax on all market transactions",
+  "passed": "Y1-M3-D12",
+
+  "containers": [
+    {"name": "CITIZENS",     "kind": "simple", "entity_type": "Citizen"},
+    {"name": "TRANSACTIONS", "kind": "simple", "entity_type": "Transaction"},
+    {"name": "TREASURY",     "kind": "simple", "entity_type": "Pool"},
+    {"name": "TAX_LEDGER",   "kind": "simple", "entity_type": "TaxRecord"},
+    {"name": "PROCESSED",    "kind": "simple", "entity_type": "Transaction"}
+  ],
+
+  "moves": [
+    {"name": "process_tx", "from": ["TRANSACTIONS"], "to": ["PROCESSED"], "entity_type": "Transaction"}
+  ],
+
+  "tensions": [
+    {
+      "name": "collect_market_tax",
+      "priority": 10,
+      "match": [
+        {"bind": "tx", "in": "TRANSACTIONS", "select": "first",
+         "where": {"op": ">", "left": {"prop": "amount", "of": "tx"}, "right": 0}},
+        {"bind": "seller", "in": "CITIZENS",
+         "where": {"op": "==", "left": {"prop": "id", "of": "seller"}, "right": {"prop": "seller_id", "of": "tx"}}},
+        {"bind": "treasury", "in": "TREASURY", "select": "first"}
+      ],
+      "emit": [
+        {"set": "seller", "property": "gold",
+         "value": {"op": "+", "left": {"prop": "gold", "of": "seller"},
+                   "right": {"op": "*", "left": {"prop": "amount", "of": "tx"}, "right": 0.75}}},
+        {"set": "treasury", "property": "gold",
+         "value": {"op": "+", "left": {"prop": "gold", "of": "treasury"},
+                   "right": {"op": "*", "left": {"prop": "amount", "of": "tx"}, "right": 0.25}}},
+        {"move": "process_tx", "entity": "tx", "to": "PROCESSED"}
+      ]
+    }
+  ]
+}

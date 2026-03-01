@@ -12,6 +12,7 @@ const {
   formatNewspaper, formatTalk, formatSettlementLook, formatHistory,
 } = require('./narrative');
 const { formatDiagnostics } = require('./diagnostics');
+const { HerbVM } = require('./herb-vm');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -23,6 +24,8 @@ class SimulationServer {
   constructor(port = 3000, seed = DEFAULT_SEED) {
     this.port = port;
     this.world = createWorld(seed);
+    this.vm = new HerbVM();
+    this.lawsDir = path.join(__dirname, '..', 'laws');
     this.running = false;
     this.tickTimer = null;
     this.wss = null;
@@ -146,6 +149,10 @@ class SimulationServer {
       case 'diagnostics':
         return formatDiagnostics(this.world);
 
+      case 'law':
+      case 'laws':
+        return this.handleLaw(input);
+
       case 'help':
         return formatHelp();
 
@@ -155,6 +162,65 @@ class SimulationServer {
       default:
         return `Unknown command: "${cmd}". Type "help" for commands.`;
     }
+  }
+
+  handleLaw(input) {
+    const parts = input.split(/\s+/);
+    const sub = parts[1];
+    const arg = parts.slice(2).join(' ');
+
+    if (!sub || sub === 'list') {
+      const laws = this.vm.listLaws();
+      if (laws.length === 0) return 'No laws enacted.';
+      const lines = ['=== ACTIVE LAWS ==='];
+      for (const law of laws) {
+        lines.push(`  ${law.name} — ${law.description} (${law.tensions} tensions, passed ${law.passed})`);
+      }
+      lines.push('', this.vm.status());
+      return lines.join('\n');
+    }
+
+    if (sub === 'load') {
+      if (!arg) return 'Usage: law load <filename>';
+      // Try relative to laws dir, then absolute
+      let filePath = path.join(this.lawsDir, arg);
+      if (!fs.existsSync(filePath)) {
+        if (!arg.endsWith('.herb.json')) filePath = path.join(this.lawsDir, arg + '.herb.json');
+      }
+      if (!fs.existsSync(filePath)) return `File not found: ${arg}`;
+      try {
+        const name = this.vm.loadFile(filePath);
+        return `Law enacted: ${name}\n\n${this.vm.status()}`;
+      } catch (e) {
+        return `Error loading law: ${e.message}`;
+      }
+    }
+
+    if (sub === 'repeal') {
+      if (!arg) return 'Usage: law repeal <name>';
+      const laws = this.vm.listLaws();
+      const match = laws.find(l => l.name === arg || l.name === `law.${arg}`);
+      if (!match) return `No active law named "${arg}". Use "law list" to see active laws.`;
+      this.vm.unload(match.name);
+      return `Law repealed: ${match.name}`;
+    }
+
+    if (sub === 'tick') {
+      const result = this.vm.tick();
+      if (result.iterations === 0) return 'HERB VM tick: fixpoint reached immediately (no tensions fired).';
+      const lines = [`HERB VM tick: ${result.iterations} iterations`];
+      for (const entry of result.log) {
+        if (entry.tension) lines.push(`  ${entry.tension}: ${entry.actions} actions`);
+        if (entry.warning) lines.push(`  ⚠ ${entry.warning}`);
+      }
+      return lines.join('\n');
+    }
+
+    if (sub === 'status') {
+      return this.vm.status();
+    }
+
+    return 'Usage: law [list|load <file>|repeal <name>|tick|status]';
   }
 
   advanceTicks(count) {
