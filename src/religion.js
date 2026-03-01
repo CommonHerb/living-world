@@ -56,21 +56,39 @@ function detectMyths(settlement, tick) {
   const living = getLiving(settlement);
   if (living.length === 0 || !settlement.chronicle) return;
 
+  // Group old significant events by type+era (50-tick buckets) to avoid myth spam
   const oldEvents = queryChronicle(settlement.chronicle, {
     minSignificance: 60,
   }).filter(e => (tick - e.tick) >= 50);
 
+  // Deduplicate: only process one event per eventType per 50-tick era
+  const seen = new Set();
+  const deduped = [];
   for (const event of oldEvents) {
-    if (religion.myths.some(m => m.sourceEventId === event.id)) continue;
+    const era = Math.floor(event.tick / 50);
+    const key = `${event.eventType}:${era}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(event);
+  }
 
-    // Find NPCs with distorted memories of this event
+  for (const event of deduped) {
+    // Skip if we already have a myth for this event type + era
+    const eventEra = Math.floor(event.tick / 50);
+    if (religion.myths.some(m => 
+      m.sourceEventType === event.eventType && 
+      Math.floor(m.sourceTick / 50) === eventEra
+    )) continue;
+
+    // Find NPCs with ANY memories of this event type (not just exact tick match)
+    // This is broader — myths are about event TYPES, not specific instances
     const memoriesOfEvent = [];
+    const seenNpcs = new Set();
     for (const npc of living) {
       for (const mem of npc.memories) {
-        if (mem.eventType === event.eventType &&
-            Math.abs(mem.tick - event.tick) < 20 &&
-            mem.fidelity < 0.5) {
+        if (mem.eventType === event.eventType && !seenNpcs.has(npc.id)) {
           memoriesOfEvent.push({ npcId: npc.id, memory: mem });
+          seenNpcs.add(npc.id);
         }
       }
     }
@@ -214,10 +232,9 @@ function deriveBehaviorEffect(eventType, valence) {
 function refreshHolders(myth, living) {
   myth.holders = [];
   for (const npc of living) {
-    if (npc.memories.some(m =>
-      m.eventType === myth.sourceEventType &&
-      Math.abs(m.tick - myth.sourceTick) < 20
-    )) {
+    // Broad match: any memory of this event type counts as "holding" the myth
+    // This represents cultural awareness — they've heard SOME version of the story
+    if (npc.memories.some(m => m.eventType === myth.sourceEventType)) {
       myth.holders.push(npc.id);
     }
   }
@@ -232,8 +249,7 @@ function detectBeliefs(settlement, tick) {
   for (const myth of religion.myths) {
     if (religion.beliefs.some(b => b.mythId === myth.id)) continue;
 
-    refreshHolders(myth, living);
-
+    // Holders are refreshed in the main tick, just check count
     if (myth.holders.length >= threshold) {
       const belief = {
         mythId: myth.id,

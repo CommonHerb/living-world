@@ -14,6 +14,7 @@ const {
 const { formatDiagnostics } = require('./diagnostics');
 const { HerbVM } = require('./herb-vm');
 const { formatCrime } = require('./crime');
+const { formatBeliefs } = require('./religion');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -154,6 +155,19 @@ class SimulationServer {
           return crimeLines.join('\n');
         }
         return formatCrime(this.world);
+      }
+
+      case 'beliefs':
+      case 'religion': {
+        const beliefLines = [];
+        if (this.world.settlements) {
+          for (const s of this.world.settlements) {
+            beliefLines.push(`\n── ${s.name} ──`);
+            beliefLines.push(formatBeliefs(s));
+          }
+          return beliefLines.join('\n');
+        }
+        return formatBeliefs(this.world);
       }
 
       case 'seed':

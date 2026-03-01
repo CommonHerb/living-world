@@ -6,7 +6,7 @@ const { tickEconomy } = require('./economy');
 const { tickOpinions } = require('./opinions');
 const { tickGossip } = require('./gossip');
 const { tickMemoryDecay } = require('./memory');
-const { tickElection, tickTreasuryCheck } = require('./politics');
+const { tickElection, tickTreasuryCheck, detectFactions } = require('./politics');
 const { tickFamily } = require('./family');
 const { tickCrime, tickMilitiaVote } = require('./crime');
 const { tickReligion } = require('./religion');
@@ -114,12 +114,25 @@ function tickWorld(world) {
     // Phase 11: Religion
     tickReligion(settlement, world.tick);
 
+    // Phase 12: Faction assignment
+    if (world.tick % 5 === 0) {
+      const { factions, unaligned } = detectFactions(settlement);
+      for (const f of factions) {
+        for (const npc of f.members) {
+          npc.faction = f.name;
+        }
+      }
+      for (const npc of unaligned) {
+        npc.faction = 'unaligned';
+      }
+    }
+
     // Archive settlement events
     for (const evt of settlement.events) {
       settlement.history.push(evt);
     }
-    if (settlement.history.length > 200) {
-      settlement.history = settlement.history.slice(-200);
+    if (settlement.history.length > 1000) {
+      settlement.history = settlement.history.slice(-1000);
     }
   }
 
@@ -131,8 +144,8 @@ function tickWorld(world) {
   for (const evt of world.events) {
     world.history.push(evt);
   }
-  if (world.history.length > 200) {
-    world.history = world.history.slice(-200);
+  if (world.history.length > 1000) {
+    world.history = world.history.slice(-1000);
   }
 
   // Collect all events for return

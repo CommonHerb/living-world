@@ -26,6 +26,14 @@ const BASE_FIDELITY = {
   relief: 0.8,
   good_trade: 0.5,
   bad_trade: 0.7,
+  robbed: 0.95,
+  stole: 0.8,
+  fined: 0.85,
+  exiled: 0.99,
+  family_exiled: 0.9,
+  unjust_acquittal: 0.9,
+  trial_juror: 0.6,
+  bandit_attack: 0.9,
 };
 
 function createMemory(eventType, subject, value, valence, tick, fidelity) {
@@ -123,6 +131,35 @@ function memoryOpinionEffect(mem) {
     case 'bad_trade':
       delta.satisfaction = -weight * 0.05;
       delta.taxSentiment = -weight * 0.1;  // blame taxes for bad prices
+      break;
+    case 'robbed':
+      delta.satisfaction = -weight * 0.3;
+      delta.taxSentiment = weight * 0.2;  // want more guards → pro-tax
+      delta.leaderApproval = -weight * 0.1;  // why aren't they protecting me?
+      break;
+    case 'stole':
+      delta.satisfaction = -weight * 0.1;  // guilt
+      break;
+    case 'fined':
+      delta.satisfaction = -weight * 0.3;
+      delta.leaderApproval = -weight * 0.15;
+      break;
+    case 'exiled':
+      delta.satisfaction = -weight * 0.5;
+      delta.leaderApproval = -weight * 0.4;
+      delta.taxSentiment = -weight * 0.3;  // anti-establishment
+      break;
+    case 'family_exiled':
+      delta.satisfaction = -weight * 0.3;
+      delta.leaderApproval = -weight * 0.3;
+      break;
+    case 'unjust_acquittal':
+      delta.satisfaction = -weight * 0.3;
+      delta.leaderApproval = -weight * 0.2;
+      break;
+    case 'bandit_attack':
+      delta.satisfaction = -weight * 0.3;
+      delta.taxSentiment = weight * 0.2;  // want protection
       break;
   }
   return delta;

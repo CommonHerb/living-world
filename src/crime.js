@@ -183,7 +183,7 @@ function tickCrime(world) {
 
   // Each NPC has a chance to commit crime
   for (const npc of nonExiled) {
-    if (npc.job === 'guard') continue; // guards don't steal (usually)
+    if (npc.job === 'guard' || npc.job === 'dependent') continue;
 
     let chance = crimeChance(npc, world);
     if (chance <= 0) continue;
@@ -217,7 +217,7 @@ function tickCrime(world) {
 
     if (!victim) {
       // Pick random victim weighted by wealth
-      const candidates = nonExiled.filter(n => n.id !== npc.id && n.gold > 1);
+      const candidates = nonExiled.filter(n => n.id !== npc.id && n.gold > 1 && n.alive);
       if (candidates.length === 0) continue;
       // Simple weighted: richer = more likely target
       const totalGold = candidates.reduce((s, c) => s + c.gold, 0);
@@ -300,6 +300,12 @@ function tickCrime(world) {
       });
     }
   }
+
+  // Clean dead bandits
+  world.crime.bandits = world.crime.bandits.filter(b => {
+    const npc = world.npcs.find(n => n.id === b.npcId);
+    return npc && npc.alive;
+  });
 
   // Bandit raids
   tickBanditry(world, rng);
