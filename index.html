@@ -3,152 +3,730 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Millhaven — Living World</title>
+<title>Living World — Watch a Society Emerge</title>
+<link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  :root {
+    --bg: #0a0a0a;
+    --bg-panel: #0d0d0d;
+    --green: #33ff33;
+    --green-dim: #1a7a1a;
+    --green-dark: #0f3f0f;
+    --amber: #ffaa00;
+    --red: #ff4444;
+    --cyan: #33ffcc;
+    --border: #1a3a1a;
+    --text-dim: #227722;
+    --faction-red: #ff6666;
+    --faction-blue: #6688ff;
+    --faction-yellow: #ffdd44;
+  }
+
   body {
-    background: #0a0a0a;
-    color: #33ff33;
-    font-family: 'Courier New', 'Lucida Console', monospace;
-    font-size: 14px;
+    background: var(--bg);
+    color: var(--green);
+    font-family: 'VT323', 'Courier New', monospace;
+    font-size: 16px;
     height: 100vh;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
+
+  /* CRT scanline overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.15) 2px,
+      rgba(0,0,0,0.15) 4px
+    );
+    z-index: 1000;
+  }
+
+  /* ═══ HEADER ═══ */
   #header {
-    padding: 8px 16px;
-    border-bottom: 1px solid #1a3a1a;
-    color: #22aa22;
-    font-size: 12px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    background: var(--bg-panel);
   }
-  #output {
+
+  #header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  #title {
+    font-size: 18px;
+    color: var(--green);
+    letter-spacing: 2px;
+  }
+
+  #world-clock {
+    font-size: 20px;
+    color: var(--amber);
+  }
+
+  #season-display {
+    font-size: 22px;
+  }
+
+  #connection-status {
+    font-size: 14px;
+    color: var(--text-dim);
+  }
+
+  .status-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+    background: var(--text-dim);
+  }
+  .status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-dot.disconnected { background: var(--red); }
+
+  /* ═══ SETTLEMENT TABS ═══ */
+  #tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-panel);
+    flex-shrink: 0;
+  }
+
+  .tab {
+    padding: 6px 16px;
+    cursor: pointer;
+    border-right: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: inherit;
+    font-size: 16px;
+    background: transparent;
+    border-top: none;
+    border-bottom: 2px solid transparent;
+    border-left: none;
+    transition: all 0.2s;
+  }
+
+  .tab:hover { color: var(--green); background: var(--green-dark); }
+  .tab.active {
+    color: var(--green);
+    border-bottom-color: var(--green);
+    background: rgba(51, 255, 51, 0.05);
+    text-shadow: 0 0 8px var(--green);
+  }
+
+  /* ═══ MAIN CONTENT ═══ */
+  #main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  /* Left panel — event log */
+  #event-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+    min-width: 0;
+  }
+
+  #event-panel-header {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 14px;
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  #event-log {
     flex: 1;
     overflow-y: auto;
-    padding: 8px 16px;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    line-height: 1.4;
-  }
-  #output .system { color: #22aa22; }
-  #output .error { color: #ff4444; }
-  #input-line {
+    padding: 8px 12px;
     display: flex;
-    padding: 8px 16px;
-    border-top: 1px solid #1a3a1a;
-    background: #0d0d0d;
+    flex-direction: column;
+    gap: 4px;
   }
-  #prompt {
-    color: #33ff33;
-    margin-right: 8px;
-    line-height: 24px;
+
+  .event-entry {
+    padding: 2px 0;
+    line-height: 1.4;
+    animation: fadeIn 0.3s ease-in;
   }
-  #input {
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .event-day { color: var(--text-dim); font-size: 13px; }
+  .event-settlement { color: var(--cyan); font-size: 13px; }
+  .event-text { color: var(--green); }
+
+  /* Event type styling */
+  .event-speech { color: #aaffaa; }
+  .event-speech::before { content: '💬 '; }
+  .event-election { color: var(--amber); }
+  .event-election::before { content: '🗳️ '; }
+  .event-death { color: var(--red); }
+  .event-death::before { content: '💀 '; }
+  .event-birth { color: #aaffee; }
+  .event-birth::before { content: '👶 '; }
+  .event-season { color: var(--amber); }
+  .event-trade { color: var(--cyan); }
+  .event-trade::before { content: '📦 '; }
+  .event-crime { color: var(--red); }
+  .event-crime::before { content: '⚔️ '; }
+  .event-gossip { color: #aa88ff; font-style: italic; }
+  .event-gossip::before { content: '🗣️ '; }
+  .event-chronicle { color: var(--amber); }
+  .event-chronicle::before { content: '📜 '; }
+  .event-migration { color: var(--cyan); }
+  .event-migration::before { content: '🚶 '; }
+  .event-religion { color: #ddaaff; }
+  .event-religion::before { content: '✨ '; }
+  .event-world { color: var(--amber); font-weight: bold; }
+  .event-world::before { content: '🌍 '; }
+
+  /* Right panel — settlement status */
+  #status-panel {
+    width: 340px;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+
+  .status-section {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .status-section h3 {
+    color: var(--text-dim);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 6px;
+    font-weight: normal;
+  }
+
+  .status-value {
+    font-size: 18px;
+    margin-bottom: 4px;
+  }
+
+  .status-detail {
+    font-size: 14px;
+    color: var(--green-dim);
+    line-height: 1.5;
+  }
+
+  .leader-name {
+    color: var(--amber);
+    font-size: 20px;
+    text-shadow: 0 0 8px rgba(255, 170, 0, 0.3);
+  }
+
+  .treasury { color: var(--amber); }
+  .population-count { font-size: 24px; }
+
+  /* Mood bar */
+  .mood-bar {
+    height: 6px;
+    background: var(--green-dark);
+    border-radius: 3px;
+    margin-top: 4px;
+    overflow: hidden;
+  }
+  .mood-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease, background-color 0.5s ease;
+  }
+
+  /* Faction list */
+  .faction-item {
+    padding: 3px 0;
+    font-size: 15px;
+  }
+  .faction-count { color: var(--text-dim); font-size: 13px; }
+
+  /* Market prices */
+  .market-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 0;
+    font-size: 14px;
+  }
+  .market-trend-up { color: var(--green); }
+  .market-trend-down { color: var(--red); }
+  .market-trend-flat { color: var(--text-dim); }
+
+  /* Beliefs */
+  .belief-item {
+    font-size: 14px;
+    padding: 2px 0;
+  }
+
+  /* ═══ COMMAND INPUT ═══ */
+  #input-bar {
+    display: flex;
+    padding: 8px 12px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-panel);
+    flex-shrink: 0;
+    align-items: center;
+    gap: 8px;
+  }
+
+  #sim-controls {
+    display: flex;
+    gap: 4px;
+  }
+
+  .ctrl-btn {
+    background: var(--green-dark);
+    border: 1px solid var(--border);
+    color: var(--green);
+    font-family: inherit;
+    font-size: 14px;
+    padding: 4px 10px;
+    cursor: pointer;
+    border-radius: 2px;
+  }
+  .ctrl-btn:hover { background: rgba(51,255,51,0.15); }
+  .ctrl-btn.active { background: rgba(51,255,51,0.2); border-color: var(--green); }
+
+  #prompt-symbol {
+    color: var(--green);
+    font-size: 18px;
+  }
+
+  #cmd-input {
     flex: 1;
     background: transparent;
     border: none;
     outline: none;
-    color: #33ff33;
+    color: var(--green);
     font-family: inherit;
-    font-size: inherit;
-    caret-color: #33ff33;
+    font-size: 16px;
+    caret-color: var(--green);
   }
-  #input::placeholder { color: #1a5a1a; }
-  #status {
-    float: right;
-    color: #664400;
+  #cmd-input::placeholder { color: var(--green-dark); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ═══ MOBILE ═══ */
+  @media (max-width: 700px) {
+    #main { flex-direction: column; }
+    #event-panel { border-right: none; border-bottom: 1px solid var(--border); flex: 1; }
+    #status-panel { width: 100%; max-height: 40vh; flex-shrink: 0; }
+    #title { display: none; }
+    .tab { padding: 6px 10px; font-size: 14px; }
+    body { font-size: 14px; }
+    #status-panel { order: -1; } /* Status on top on mobile */
+    #event-panel { order: 0; }
   }
-  ::-webkit-scrollbar { width: 8px; }
-  ::-webkit-scrollbar-track { background: #0a0a0a; }
-  ::-webkit-scrollbar-thumb { background: #1a3a1a; border-radius: 4px; }
 </style>
 </head>
 <body>
+
+<!-- HEADER -->
 <div id="header">
-  MILLHAVEN TERMINAL v0.4 — Living World Prototype
-  <span id="status">disconnected</span>
+  <div id="header-left">
+    <span id="title">LIVING WORLD</span>
+    <span id="season-display">🌱</span>
+    <span id="world-clock">Day 0 — Spring, Year 1</span>
+  </div>
+  <div id="connection-status">
+    <span class="status-dot" id="status-dot"></span>
+    <span id="status-text">connecting...</span>
+  </div>
 </div>
-<div id="output"></div>
-<div id="input-line">
-  <span id="prompt">&gt;</span>
-  <input id="input" type="text" placeholder="type help for commands" autofocus autocomplete="off" spellcheck="false">
+
+<!-- SETTLEMENT TABS -->
+<div id="tabs">
+  <button class="tab active" data-settlement="cudderland">🏛️ Cudderland</button>
+  <button class="tab" data-settlement="thornwall">👑 Thornwall</button>
+</div>
+
+<!-- MAIN SPLIT VIEW -->
+<div id="main">
+  <!-- Left: Event Log -->
+  <div id="event-panel">
+    <div id="event-panel-header">
+      <span>📡 Live Feed</span>
+      <span id="event-count">0 events</span>
+    </div>
+    <div id="event-log"></div>
+  </div>
+
+  <!-- Right: Settlement Status -->
+  <div id="status-panel">
+    <div class="status-section" id="sec-season">
+      <h3>Season</h3>
+      <div class="status-value" id="st-season">🌱 Spring — Year 1</div>
+    </div>
+    <div class="status-section" id="sec-leader">
+      <h3>Leadership</h3>
+      <div class="status-value"><span id="st-gov-icon">🏛️</span> <span class="leader-name" id="st-leader">—</span></div>
+      <div class="status-detail" id="st-gov-type">Council</div>
+    </div>
+    <div class="status-section" id="sec-pop">
+      <h3>Population</h3>
+      <div class="status-value"><span class="population-count" id="st-pop">0</span> <span class="status-detail" id="st-pop-detail">(0 adults)</span></div>
+      <div class="status-detail">Mood: <span id="st-mood">—</span></div>
+      <div class="mood-bar"><div class="mood-fill" id="st-mood-bar" style="width:50%;background:var(--green)"></div></div>
+    </div>
+    <div class="status-section">
+      <h3>Treasury</h3>
+      <div class="status-value treasury" id="st-treasury">0g</div>
+      <div class="status-detail">Tax rate: <span id="st-tax">0%</span></div>
+    </div>
+    <div class="status-section" id="sec-factions">
+      <h3>Factions</h3>
+      <div id="st-factions" class="status-detail">No factions yet</div>
+    </div>
+    <div class="status-section" id="sec-market">
+      <h3>Market</h3>
+      <div id="st-market" class="status-detail">No trades yet</div>
+    </div>
+    <div class="status-section" id="sec-relations">
+      <h3>Relations</h3>
+      <div id="st-relations" class="status-detail">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- COMMAND INPUT -->
+<div id="input-bar">
+  <div id="sim-controls">
+    <button class="ctrl-btn" id="btn-run" title="Auto-run simulation">▶ RUN</button>
+    <button class="ctrl-btn" id="btn-tick" title="Advance 1 tick">⏭ TICK</button>
+  </div>
+  <span id="prompt-symbol">&gt;</span>
+  <input id="cmd-input" type="text" placeholder="type a command or just watch..." autofocus autocomplete="off" spellcheck="false">
 </div>
 
 <script>
-const output = document.getElementById('output');
-const input = document.getElementById('input');
-const status = document.getElementById('status');
+const SEASONS = { spring: '🌱', summer: '☀️', autumn: '🍂', winter: '❄️' };
+const SEASON_LENGTH = 12;
+const YEAR_LENGTH = 50;
+
+// State
 let ws = null;
+let activeSettlement = 'cudderland';
+let isRunning = false;
+let worldState = {};     // latest state per settlement
+let eventLog = [];       // all events
 let commandHistory = [];
 let historyIndex = -1;
+let totalEvents = 0;
 
-function appendText(text, cls) {
-  // Strip trailing prompt markers
-  text = text.replace(/\n\n> $/,'').replace(/\n> $/,'');
-  const span = document.createElement('span');
-  if (cls) span.className = cls;
-  span.textContent = text + '\n';
-  output.appendChild(span);
-  output.scrollTop = output.scrollHeight;
-}
+// DOM refs
+const el = id => document.getElementById(id);
+const eventLogEl = el('event-log');
+const cmdInput = el('cmd-input');
+const btnRun = el('btn-run');
+const btnTick = el('btn-tick');
+const statusDot = el('status-dot');
+const statusText = el('status-text');
 
+// ═══ CONNECTION ═══
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${proto}//${location.host}`);
 
   ws.onopen = () => {
-    status.textContent = 'connected';
-    status.style.color = '#33ff33';
+    statusDot.className = 'status-dot connected';
+    statusText.textContent = 'connected';
+    // Request initial state and auto-run
+    ws.send('__ui_init__');
   };
 
   ws.onmessage = (e) => {
-    appendText(e.data);
+    try {
+      const msg = JSON.parse(e.data);
+      handleMessage(msg);
+    } catch {
+      // Legacy text message — show in event log
+      addEvent({ type: 'system', text: e.data, settlement: activeSettlement });
+    }
   };
 
   ws.onclose = () => {
-    status.textContent = 'disconnected';
-    status.style.color = '#664400';
-    appendText('Connection lost. Reconnecting...', 'system');
+    statusDot.className = 'status-dot disconnected';
+    statusText.textContent = 'reconnecting...';
     setTimeout(connect, 2000);
   };
 
   ws.onerror = () => {
-    status.textContent = 'error';
-    status.style.color = '#ff4444';
+    statusDot.className = 'status-dot disconnected';
+    statusText.textContent = 'error';
   };
 }
 
-input.addEventListener('keydown', (e) => {
+// ═══ MESSAGE HANDLING ═══
+function handleMessage(msg) {
+  switch (msg.type) {
+    case 'state':
+      updateState(msg);
+      break;
+    case 'tick':
+      updateState(msg.state);
+      if (msg.events) {
+        for (const ev of msg.events) addEvent(ev);
+      }
+      break;
+    case 'events':
+      if (msg.events) for (const ev of msg.events) addEvent(ev);
+      break;
+    case 'text':
+      addEvent({ type: 'system', text: msg.text, settlement: activeSettlement });
+      break;
+    case 'running':
+      isRunning = msg.value;
+      updateRunButton();
+      break;
+  }
+}
+
+function updateState(state) {
+  if (!state) return;
+  // Store state for each settlement
+  if (state.settlements) {
+    for (const s of state.settlements) {
+      worldState[s.id] = s;
+    }
+  }
+  if (state.tick !== undefined) {
+    worldState._tick = state.tick;
+  }
+  renderStatus();
+}
+
+// ═══ EVENT LOG ═══
+function addEvent(ev) {
+  totalEvents++;
+  eventLog.push(ev);
+  if (eventLog.length > 500) eventLog = eventLog.slice(-400);
+
+  // Only show events for active settlement or world events
+  if (ev.settlement && ev.settlement !== activeSettlement && ev.type !== 'world' && ev.type !== 'migration') return;
+
+  const div = document.createElement('div');
+  div.className = 'event-entry';
+
+  const typeClass = getEventClass(ev.type);
+  const dayStr = ev.tick ? `<span class="event-day">Day ${ev.tick}</span> ` : '';
+  const setStr = ev.settlementName ? `<span class="event-settlement">[${ev.settlementName}]</span> ` : '';
+
+  div.innerHTML = `${dayStr}${setStr}<span class="${typeClass}">${escapeHtml(ev.text)}</span>`;
+  eventLogEl.appendChild(div);
+
+  // Auto-scroll
+  eventLogEl.scrollTop = eventLogEl.scrollHeight;
+
+  // Prune DOM
+  while (eventLogEl.children.length > 300) {
+    eventLogEl.removeChild(eventLogEl.firstChild);
+  }
+
+  el('event-count').textContent = `${totalEvents} events`;
+}
+
+function getEventClass(type) {
+  const map = {
+    speech: 'event-speech', gossip: 'event-gossip', election: 'event-election',
+    death: 'event-death', birth: 'event-birth', season_change: 'event-season',
+    trade: 'event-trade', crime: 'event-crime', chronicle: 'event-chronicle',
+    migration: 'event-migration', religion: 'event-religion', world: 'event-world',
+  };
+  return map[type] || 'event-text';
+}
+
+function escapeHtml(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ═══ STATUS PANEL ═══
+function renderStatus() {
+  const s = worldState[activeSettlement];
+  const tick = worldState._tick || 0;
+
+  // World clock
+  const season = getSeason(tick);
+  const year = Math.floor(tick / YEAR_LENGTH) + 1;
+  const emoji = SEASONS[season] || '🌍';
+  el('world-clock').textContent = `Day ${tick} — ${capitalize(season)}, Year ${year}`;
+  el('season-display').textContent = emoji;
+  el('st-season').textContent = `${emoji} ${capitalize(season)} — Year ${year}`;
+
+  if (!s) return;
+
+  // Leader
+  el('st-leader').textContent = s.leaderNames || '—';
+  el('st-gov-icon').textContent = s.government === 'monarchy' ? '👑' : '🏛️';
+  el('st-gov-type').textContent = s.government === 'monarchy' ? 'Monarchy' : 'Council';
+
+  // Population
+  el('st-pop').textContent = s.population || 0;
+  el('st-pop-detail').textContent = `(${s.adults || 0} adults)`;
+  el('st-mood').textContent = s.mood || '—';
+  
+  // Mood bar
+  const moodPct = moodToPercent(s.moodValue);
+  const moodBar = el('st-mood-bar');
+  moodBar.style.width = moodPct + '%';
+  moodBar.style.backgroundColor = moodPct > 60 ? 'var(--green)' : moodPct > 35 ? 'var(--amber)' : 'var(--red)';
+
+  // Treasury
+  el('st-treasury').textContent = `${Math.floor(s.treasury || 0)}g`;
+  el('st-tax').textContent = `${Math.round((s.taxRate || 0) * 100)}%`;
+
+  // Factions
+  if (s.factions && s.factions.length > 0) {
+    el('st-factions').innerHTML = s.factions.map(f =>
+      `<div class="faction-item">${f.emoji || '⚑'} ${escapeHtml(f.name)} <span class="faction-count">(${f.count})</span></div>`
+    ).join('');
+  } else {
+    el('st-factions').textContent = 'No factions yet';
+  }
+
+  // Market
+  if (s.market && s.market.length > 0) {
+    el('st-market').innerHTML = s.market.map(m => {
+      const trendClass = m.trend === '↑' ? 'market-trend-up' : m.trend === '↓' ? 'market-trend-down' : 'market-trend-flat';
+      return `<div class="market-row"><span>${m.commodity}</span><span>${m.price} <span class="${trendClass}">${m.trend}</span></span></div>`;
+    }).join('');
+  } else {
+    el('st-market').textContent = 'No trades yet';
+  }
+
+  // Relations
+  if (s.relations && s.relations.length > 0) {
+    el('st-relations').innerHTML = s.relations.map(r =>
+      `<div>${r.emoji} ${escapeHtml(r.name)}: ${escapeHtml(r.label)} (trade: ${r.tradeVolume})</div>`
+    ).join('');
+  } else {
+    el('st-relations').textContent = '—';
+  }
+}
+
+function getSeason(tick) {
+  const d = tick % YEAR_LENGTH;
+  if (d < SEASON_LENGTH) return 'spring';
+  if (d < SEASON_LENGTH * 2) return 'summer';
+  if (d < SEASON_LENGTH * 3) return 'autumn';
+  return 'winter';
+}
+
+function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+function moodToPercent(val) {
+  if (val === undefined || val === null) return 50;
+  return Math.max(0, Math.min(100, Math.round((val + 1) * 50)));
+}
+
+function updateRunButton() {
+  btnRun.textContent = isRunning ? '⏸ STOP' : '▶ RUN';
+  btnRun.classList.toggle('active', isRunning);
+}
+
+// ═══ CONTROLS ═══
+btnRun.addEventListener('click', () => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(isRunning ? 'stop' : 'run');
+  }
+});
+
+btnTick.addEventListener('click', () => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send('tick');
+  }
+});
+
+// Tab switching
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    activeSettlement = tab.dataset.settlement;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(`goto ${activeSettlement}`);
+    }
+    renderStatus();
+    // Re-render events for this settlement
+    refilterEvents();
+  });
+});
+
+function refilterEvents() {
+  eventLogEl.innerHTML = '';
+  const relevant = eventLog.filter(ev =>
+    !ev.settlement || ev.settlement === activeSettlement || ev.type === 'world' || ev.type === 'migration'
+  ).slice(-100);
+  for (const ev of relevant) {
+    const div = document.createElement('div');
+    div.className = 'event-entry';
+    const typeClass = getEventClass(ev.type);
+    const dayStr = ev.tick ? `<span class="event-day">Day ${ev.tick}</span> ` : '';
+    const setStr = ev.settlementName ? `<span class="event-settlement">[${ev.settlementName}]</span> ` : '';
+    div.innerHTML = `${dayStr}${setStr}<span class="${typeClass}">${escapeHtml(ev.text)}</span>`;
+    eventLogEl.appendChild(div);
+  }
+  eventLogEl.scrollTop = eventLogEl.scrollHeight;
+}
+
+// Command input
+cmdInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
-    const cmd = input.value.trim();
+    const cmd = cmdInput.value.trim();
     if (!cmd) return;
-    appendText('> ' + cmd, 'system');
+    addEvent({ type: 'system', text: '> ' + cmd, settlement: activeSettlement });
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(cmd);
-    } else {
-      appendText('Not connected.', 'error');
     }
     commandHistory.unshift(cmd);
     if (commandHistory.length > 50) commandHistory.pop();
     historyIndex = -1;
-    input.value = '';
+    cmdInput.value = '';
   } else if (e.key === 'ArrowUp') {
     e.preventDefault();
     if (historyIndex < commandHistory.length - 1) {
       historyIndex++;
-      input.value = commandHistory[historyIndex];
+      cmdInput.value = commandHistory[historyIndex];
     }
   } else if (e.key === 'ArrowDown') {
     e.preventDefault();
-    if (historyIndex > 0) {
-      historyIndex--;
-      input.value = commandHistory[historyIndex];
-    } else {
-      historyIndex = -1;
-      input.value = '';
-    }
+    if (historyIndex > 0) { historyIndex--; cmdInput.value = commandHistory[historyIndex]; }
+    else { historyIndex = -1; cmdInput.value = ''; }
   }
 });
 
+// Start
 connect();
 </script>
 </body>
