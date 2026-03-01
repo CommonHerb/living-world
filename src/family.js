@@ -15,7 +15,7 @@ const MARRIAGE_MIN_AGE = 30;
 const CHILD_MATURITY_AGE = 30;
 const MIN_LIFESPAN = 150;
 const MAX_LIFESPAN = 250;
-const BIRTH_CHANCE = 0.03;
+const BIRTH_CHANCE = 0.025;
 const MUTATION_RATE = 0.10;
 const MEMORY_TRANSFER_FIDELITY = 0.5;
 const MAX_CHILDREN_PER_COUPLE = 4;
@@ -159,6 +159,12 @@ function tickBirths(settlement, tick) {
     const parentB = settlement.npcs.find(n => n.id === family.spouseB);
     if (!parentA || !parentB || !parentA.alive || !parentB.alive) continue;
     if (family.children.length >= MAX_CHILDREN_PER_COUPLE) continue;
+
+    // Food pressure: births require sufficient food per capita and family wealth
+    const livingCount = settlement.npcs.filter(n => n.alive !== false).length;
+    const foodPerCapita = livingCount > 0 ? (settlement.granary || 0) / livingCount : 0;
+    const familyWealth = (parentA.gold || 0) + (parentB.gold || 0);
+    if (foodPerCapita < 0.5 || familyWealth < 3) continue;
 
     if (rng.float(0, 1) < BIRTH_CHANCE) {
       const childId = settlement.nextNpcId++;

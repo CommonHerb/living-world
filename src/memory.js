@@ -10,7 +10,7 @@
  */
 
 const MAX_MEMORIES = 12;
-const DECAY_RATE = 0.995;
+const DECAY_RATE = 0.992;
 const FORGET_THRESHOLD = 0.2;
 
 // Higher initial fidelity for emotional/traumatic events
@@ -121,10 +121,10 @@ function memoryOpinionEffect(mem) {
       delta.leaderApproval = -weight * 0.3;
       break;
     case 'relief':
-      // Treasury saved me → strongly pro-tax
+      // Treasury saved me → mildly pro-tax
       delta.satisfaction = weight * 0.3;
-      delta.taxSentiment = weight * 0.5;
-      delta.leaderApproval = weight * 0.2;
+      delta.taxSentiment = weight * 0.2;
+      delta.leaderApproval = weight * 0.15;
       break;
     case 'good_trade':
       delta.satisfaction = weight * 0.05;

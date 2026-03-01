@@ -106,8 +106,11 @@ function detectMyths(settlement, tick) {
     const mythNarrative = generateMythNarrative(event, avgFidelity, settlement);
     const moral = deriveMoral(event.eventType, avgValence, settlement);
 
+    const mythName = generateMythName(event.eventType, avgFidelity, avgValence, settlement);
+
     const myth = {
       id: religion.nextMythId++,
+      name: mythName,
       sourceEventId: event.id,
       sourceEventType: event.eventType,
       sourceTick: event.tick,
@@ -125,16 +128,60 @@ function detectMyths(settlement, tick) {
     religion.myths.push(myth);
 
     recordEvent(settlement.chronicle, tick, 'myth_formed', [],
-      `A myth has formed about the ${event.eventType} of Day ${event.tick}: "${mythNarrative}"`,
+      `A myth has formed: "${mythName}" — ${mythNarrative}`,
       { affectsAll: true, affectedCount: memoriesOfEvent.length }
     );
 
     settlement.events.push({
       tick,
       type: 'myth',
-      text: `MYTH FORMED: "${mythNarrative}" (from ${event.eventType}, Day ${event.tick})`,
+      text: `MYTH FORMED: "${mythName}" — ${mythNarrative}`,
     });
   }
+}
+
+// ── Myth Name Generation ──
+
+function generateMythName(eventType, fidelity, valence, settlement) {
+  const dramatic = fidelity < 0.3;
+  const dark = valence < -0.2;
+
+  const nameTemplates = {
+    crisis: dark
+      ? ['The Great Hunger', 'The Starving Days', 'The Empty Granary', 'The Long Fast', 'The Wasting']
+      : ['The Trial of Want', 'The Lean Season', 'The Testing', 'The Scarcity'],
+    election: [
+      'The Choosing', 'The Voice of Many', 'The Great Assembly', 'The Day of Names',
+      'The Reckoning of Hands',
+    ],
+    tax_change: dark
+      ? ['The Heavy Burden', 'The Tithe of Sorrows', 'The Crushing Levy', 'The Tax of Tears']
+      : ['The Fair Portion', 'The Common Offering', 'The Shared Load', 'The Tithe'],
+    founding: [
+      'The First Planting', 'The Arrival', 'The Claiming', 'The Setting of Stones',
+      'The Dream of the Founders',
+    ],
+    death: dramatic
+      ? ['The Great Passing', 'The Shadow\'s Harvest', 'The Final Silence', 'The Lost Light']
+      : ['The Departure', 'The Crossing Over', 'The Last Breath', 'The Ancestor\'s Call'],
+    marriage: [
+      'The Binding', 'The Union of Souls', 'The Joining', 'The Vow Beneath Stars',
+    ],
+    surplus: [
+      'The Golden Plenty', 'The Overflowing Stores', 'The Blessed Harvest',
+      'The Season of Abundance', 'The Fat Days',
+    ],
+    bankruptcy: [
+      'The Ruin', 'The Fall of Fortune', 'The Emptying', 'The Curse of Greed',
+      'The Day the Gold Died',
+    ],
+  };
+
+  const pool = nameTemplates[eventType] || [
+    'The Strange Happening', 'The Omen', 'The Sign', 'The Turning',
+  ];
+
+  return seededPick(pool, settlement);
 }
 
 // ── Myth Narrative Templates ──
@@ -594,7 +641,8 @@ function formatBeliefs(settlement) {
   lines.push(`MYTHS (${religion.myths.length}):`);
   for (const myth of religion.myths) {
     const adoption = pop > 0 ? Math.round(myth.holders.length / pop * 100) : 0;
-    lines.push(`  ◆ "${myth.narrative}"`);
+    lines.push(`  ◆ ${myth.name || 'Unnamed Myth'}`);
+    lines.push(`    "${myth.narrative}"`);
     lines.push(`    Origin: ${myth.sourceEventType} (Day ${myth.sourceTick}) | Moral: ${myth.moral}`);
     lines.push(`    Adoption: ${adoption}% (${myth.holders.length}/${pop})`);
     lines.push('');

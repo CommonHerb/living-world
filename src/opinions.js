@@ -38,13 +38,17 @@ function tickOpinions(settlement, tick) {
       leaderApproval: (npc.genome.agreeableness - 0.5) * 0.5,
       satisfaction: (npc.genome.riskTolerance - 0.3) * 0.3,
     };
-    if (npc.job === 'guard') personalityAnchor.taxSentiment += 0.4;
-    if (npc.job === 'farmer') personalityAnchor.taxSentiment -= 0.15;
+    // Job-based tax sentiment anchors — balanced so net effect is ~zero
+    if (npc.job === 'guard') personalityAnchor.taxSentiment += 0.25;
+    if (npc.job === 'farmer') personalityAnchor.taxSentiment -= 0.25;
+    if (npc.job === 'woodcutter') personalityAnchor.taxSentiment -= 0.15;
+    if (npc.job === 'miner') personalityAnchor.taxSentiment -= 0.10;
+    if (npc.job === 'smith') personalityAnchor.taxSentiment += 0.05;
 
     const s = npc.genome.stubbornness;
     const memWeight = (1 - s) * 0.25;
-    const socialWeight = (1 - s) * npc.genome.agreeableness * 0.08;
-    const anchorWeight = 0.06;
+    const socialWeight = (1 - s) * npc.genome.agreeableness * 0.04; // halved to reduce convergence
+    const anchorWeight = 0.10; // stronger personality anchor to maintain diversity
 
     for (const dim of ['taxSentiment', 'leaderApproval', 'satisfaction']) {
       const current = npc.opinions[dim];

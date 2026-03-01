@@ -271,9 +271,10 @@ function tickTreasuryCheck(settlement, tick) {
 
 function detectFactions(settlement) {
   const npcs = settlement.npcs.filter(n => n.alive !== false && !n.isChild);
-  const antiTax = npcs.filter(n => n.opinions.taxSentiment < -0.1);
-  const proTax = npcs.filter(n => n.opinions.taxSentiment > 0.1);
-  const unaligned = npcs.filter(n => Math.abs(n.opinions.taxSentiment) <= 0.1);
+  const antiTax = npcs.filter(n => n.opinions.taxSentiment < -0.15);
+  const proTax = npcs.filter(n => n.opinions.taxSentiment > 0.15);
+  const moderate = npcs.filter(n => Math.abs(n.opinions.taxSentiment) <= 0.15);
+  const unaligned = []; // everyone gets a faction now
 
   const factions = [];
   if (antiTax.length >= 2) {
@@ -289,6 +290,20 @@ function detectFactions(settlement) {
       name: 'The Shields', emoji: '🛡️', desc: 'pro-tax, guard/consumer-heavy',
       members: proTax, avgSentiment: avg,
     });
+  }
+  if (moderate.length >= 2) {
+    const avg = moderate.reduce((s, n) => s + n.opinions.taxSentiment, 0) / moderate.length;
+    factions.push({
+      name: 'The Scales', emoji: '⚖️', desc: 'centrist, pragmatic',
+      members: moderate, avgSentiment: avg,
+    });
+  }
+
+  // Anyone not in a faction (because their group was < 2) goes to unaligned
+  const factionMembers = new Set();
+  for (const f of factions) for (const m of f.members) factionMembers.add(m.id);
+  for (const npc of npcs) {
+    if (!factionMembers.has(npc.id)) unaligned.push(npc);
   }
 
   return { factions, unaligned };
