@@ -1,0 +1,30 @@
+{
+  "name": "constitution.manifest",
+  "type": "constitutional_manifest",
+  "ratified": "Y1-M1-D01",
+  "description": "Master manifest for the Constitution of Cudderland. Lists all constitutional files in load order.",
+
+  "files": [
+    "preamble.herb.json",
+    "article-1-rights.herb.json",
+    "article-2-government.herb.json",
+    "article-3-economy.herb.json",
+    "article-4-justice.herb.json",
+    "article-5-amendment.herb.json"
+  ],
+
+  "priority_hierarchy": {
+    "constitutional_guards": 1000,
+    "structural_guards": 950,
+    "process_rules": 800,
+    "ordinary_laws": "10-100"
+  },
+
+  "immutable_sections": ["preamble"],
+
+  "amendment_threshold": {
+    "required_votes": 4,
+    "total_votes": 5,
+    "description": "2/3 supermajority of the Council"
+  }
+}

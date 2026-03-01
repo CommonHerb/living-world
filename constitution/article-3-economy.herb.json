@@ -1,0 +1,75 @@
+{
+  "name": "constitution.article_3.economy",
+  "type": "constitutional",
+  "ratified": "Y1-M1-D01",
+  "article": 3,
+  "title": "Economic Protections",
+
+  "description": "Constitutional constraints on taxation and public spending. Guards against excessive taxation and ensures essential services are funded before discretionary spending.",
+
+  "containers": [
+    {"name": "LAWS",          "kind": "simple", "entity_type": "Law"},
+    {"name": "VOID_LAWS",     "kind": "simple", "entity_type": "Law"},
+    {"name": "TREASURY",      "kind": "simple", "entity_type": "Pool"},
+    {"name": "BUDGET_ITEMS",  "kind": "simple", "entity_type": "BudgetItem"},
+    {"name": "PROPOSALS",     "kind": "simple", "entity_type": "Proposal"},
+    {"name": "FAILED_PROPOSALS", "kind": "simple", "entity_type": "Proposal"}
+  ],
+
+  "moves": [
+    {"name": "void_law",      "from": ["LAWS"], "to": ["VOID_LAWS"], "entity_type": "Law"},
+    {"name": "fail_proposal", "from": ["PROPOSALS"], "to": ["FAILED_PROPOSALS"], "entity_type": "Proposal"}
+  ],
+
+  "tensions": [
+    {
+      "name": "guard_max_tax_rate",
+      "priority": 1000,
+      "description": "Section 1: No tax may exceed 40% of any transaction, income, or assessed value.",
+      "match": [
+        {"bind": "law", "in": "LAWS",
+         "where": {"op": "&&",
+           "left": {"op": "==", "left": {"prop": "type", "of": "law"}, "right": "tax"},
+           "right": {"op": ">", "left": {"prop": "rate", "of": "law"}, "right": 0.40}}}
+      ],
+      "emit": [
+        {"set": "law", "property": "status", "value": "VOID"},
+        {"set": "law", "property": "void_reason", "value": "Violates Article III, Section 1: Tax rate exceeds 40% maximum"},
+        {"move": "void_law", "entity": "law", "to": "VOID_LAWS"}
+      ]
+    },
+    {
+      "name": "guard_essential_funding",
+      "priority": 950,
+      "description": "Section 2: Treasury must fund guards and public granary before any other expenditure. Discretionary budget items are blocked while essential services are underfunded.",
+      "match": [
+        {"bind": "item", "in": "BUDGET_ITEMS",
+         "where": {"op": "&&",
+           "left": {"op": "==", "left": {"prop": "category", "of": "item"}, "right": "discretionary"},
+           "right": {"op": "==", "left": {"prop": "essentials_funded", "of": "item"}, "right": false}}}
+      ],
+      "emit": [
+        {"set": "item", "property": "status", "value": "BLOCKED"},
+        {"set": "item", "property": "block_reason", "value": "Article III, Section 2: Essential services (guards, granary) must be funded first"}
+      ]
+    },
+    {
+      "name": "guard_emergency_rationing",
+      "priority": 950,
+      "description": "Section 3: Emergency rationing requires a 2/3 supermajority of the Council (4 of 5 votes).",
+      "match": [
+        {"bind": "proposal", "in": "PROPOSALS",
+         "where": {"op": "&&",
+           "left": {"op": "==", "left": {"prop": "type", "of": "proposal"}, "right": "emergency_rationing"},
+           "right": {"op": "&&",
+             "left": {"op": "==", "left": {"prop": "voting_complete", "of": "proposal"}, "right": true},
+             "right": {"op": "<", "left": {"prop": "yea_votes", "of": "proposal"}, "right": 4}}}}
+      ],
+      "emit": [
+        {"set": "proposal", "property": "status", "value": "FAILED"},
+        {"set": "proposal", "property": "fail_reason", "value": "Article III, Section 3: Emergency rationing requires 2/3 supermajority (4 of 5)"},
+        {"move": "fail_proposal", "entity": "proposal", "to": "FAILED_PROPOSALS"}
+      ]
+    }
+  ]
+}

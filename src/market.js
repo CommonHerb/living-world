@@ -97,8 +97,9 @@ function generateOrders(world) {
   const rng = world.tickRng;
   const bids = [];
   const asks = [];
+  const activeNpcs = world.npcs.filter(n => n.alive !== false && !n.isChild);
 
-  for (const npc of world.npcs) {
+  for (const npc of activeNpcs) {
     for (const commodity of COMMODITIES) {
       const belief = npc.priceBeliefs[commodity];
       if (!belief) continue;
@@ -263,7 +264,8 @@ function updateBeliefs(world, tradeResults, failures) {
   }
 
   // Update beliefs for all participants
-  for (const npc of world.npcs) {
+  const activeNpcs2 = world.npcs.filter(n => n.alive !== false && !n.isChild);
+  for (const npc of activeNpcs2) {
     for (const commodity of COMMODITIES) {
       const key = `${npc.id}-${commodity}`;
       const belief = npc.priceBeliefs[commodity];
@@ -310,14 +312,15 @@ function handleBankruptcy(world) {
   const rng = world.tickRng;
   const bankruptcies = [];
 
-  for (const npc of world.npcs) {
+  const activeNpcs3 = world.npcs.filter(n => n.alive !== false && !n.isChild);
+  for (const npc of activeNpcs3) {
     if (npc.job === 'guard') continue;  // guards paid by treasury
 
     const totalInventory = COMMODITIES.reduce((s, c) => s + npc.inventory[c], 0);
     if (npc.gold <= 0 && totalInventory === 0) {
       // Bankrupt! Switch to most profitable job
       const jobWealth = {};
-      for (const other of world.npcs) {
+      for (const other of activeNpcs3) {
         if (!jobWealth[other.job]) jobWealth[other.job] = [];
         jobWealth[other.job].push(other.gold);
       }
@@ -333,7 +336,7 @@ function handleBankruptcy(world) {
       if (bestJob !== npc.job) {
         npc.job = bestJob;
         // Copy beliefs from a successful agent of same job
-        const mentor = world.npcs.find(n => n.job === bestJob && n.gold > 5 && n.id !== npc.id);
+        const mentor = activeNpcs3.find(n => n.job === bestJob && n.gold > 5 && n.id !== npc.id);
         if (mentor) {
           for (const c of COMMODITIES) {
             npc.priceBeliefs[c] = { ...mentor.priceBeliefs[c] };
@@ -363,7 +366,8 @@ function handleBankruptcy(world) {
  */
 function governanceShock(world, oldTaxRate) {
   if (Math.abs(world.taxRate - oldTaxRate) > 0.1) {
-    for (const npc of world.npcs) {
+    const activeNpcs4 = world.npcs.filter(n => n.alive !== false && !n.isChild);
+    for (const npc of activeNpcs4) {
       for (const commodity of COMMODITIES) {
         const belief = npc.priceBeliefs[commodity];
         const spread = belief.high - belief.low;

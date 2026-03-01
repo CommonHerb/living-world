@@ -1,0 +1,100 @@
+{
+  "name": "constitution.article_2.government",
+  "type": "constitutional",
+  "ratified": "Y1-M1-D01",
+  "article": 2,
+  "title": "Structure of Government",
+
+  "description": "Defines the governing body: a Council of 5, elected by the citizens every 30 ticks. Term limits of 3 consecutive terms. Laws pass by simple majority (3 of 5).",
+
+  "containers": [
+    {"name": "CITIZENS",      "kind": "simple", "entity_type": "Citizen"},
+    {"name": "COUNCIL",       "kind": "simple", "entity_type": "CouncilMember"},
+    {"name": "CANDIDATES",    "kind": "simple", "entity_type": "Citizen"},
+    {"name": "ELECTIONS",     "kind": "simple", "entity_type": "Election"},
+    {"name": "PROPOSALS",     "kind": "simple", "entity_type": "Proposal"},
+    {"name": "LAWS",          "kind": "simple", "entity_type": "Law"},
+    {"name": "FAILED_PROPOSALS", "kind": "simple", "entity_type": "Proposal"},
+    {"name": "WORLD",         "kind": "simple", "entity_type": "WorldState"}
+  ],
+
+  "moves": [
+    {"name": "seat_council",    "from": ["CANDIDATES"], "to": ["COUNCIL"],  "entity_type": "CouncilMember"},
+    {"name": "unseat_council",  "from": ["COUNCIL"],    "to": ["CITIZENS"], "entity_type": "Citizen"},
+    {"name": "pass_proposal",   "from": ["PROPOSALS"],  "to": ["LAWS"],     "entity_type": "Law"},
+    {"name": "fail_proposal",   "from": ["PROPOSALS"],  "to": ["FAILED_PROPOSALS"], "entity_type": "Proposal"}
+  ],
+
+  "tensions": [
+    {
+      "name": "trigger_election",
+      "priority": 900,
+      "description": "Section 1: Elections occur every 30 ticks. When the tick counter reaches a multiple of 30, an election is triggered.",
+      "match": [
+        {"bind": "world", "in": "WORLD", "select": "first",
+         "where": {"op": "&&",
+           "left": {"op": "==", "left": {"op": "%", "left": {"prop": "tick", "of": "world"}, "right": 30}, "right": 0},
+           "right": {"op": "==", "left": {"prop": "election_pending", "of": "world"}, "right": false}}}
+      ],
+      "emit": [
+        {"set": "world", "property": "election_pending", "value": true},
+        {"set": "world", "property": "election_started_tick", "value": {"prop": "tick", "of": "world"}}
+      ]
+    },
+    {
+      "name": "enforce_council_size",
+      "priority": 900,
+      "description": "Section 2: The Council shall consist of exactly 5 members. No more, no less.",
+      "match": [
+        {"bind": "world", "in": "WORLD", "select": "first",
+         "where": {"op": "!=", "left": {"prop": "council_count", "of": "world"}, "right": 5}}
+      ],
+      "emit": [
+        {"set": "world", "property": "emergency_election", "value": true}
+      ]
+    },
+    {
+      "name": "enforce_term_limits",
+      "priority": 950,
+      "description": "Section 3: No citizen may serve more than 3 consecutive terms on the Council.",
+      "match": [
+        {"bind": "member", "in": "COUNCIL",
+         "where": {"op": ">=", "left": {"prop": "consecutive_terms", "of": "member"}, "right": 3}}
+      ],
+      "emit": [
+        {"set": "member", "property": "eligible", "value": false},
+        {"set": "member", "property": "term_limited", "value": true},
+        {"move": "unseat_council", "entity": "member", "to": "CITIZENS"}
+      ]
+    },
+    {
+      "name": "majority_vote",
+      "priority": 800,
+      "description": "Section 4: Laws pass by majority vote of the Council (3 of 5 or more).",
+      "match": [
+        {"bind": "proposal", "in": "PROPOSALS",
+         "where": {"op": ">=", "left": {"prop": "yea_votes", "of": "proposal"}, "right": 3}}
+      ],
+      "emit": [
+        {"set": "proposal", "property": "status", "value": "PASSED"},
+        {"set": "proposal", "property": "passed_date", "value": {"prop": "current_date", "of": "proposal"}},
+        {"move": "pass_proposal", "entity": "proposal", "to": "LAWS"}
+      ]
+    },
+    {
+      "name": "fail_vote",
+      "priority": 800,
+      "description": "Section 4 (cont): Proposals that fail to achieve majority are rejected.",
+      "match": [
+        {"bind": "proposal", "in": "PROPOSALS",
+         "where": {"op": "&&",
+           "left": {"op": "==", "left": {"prop": "voting_complete", "of": "proposal"}, "right": true},
+           "right": {"op": "<", "left": {"prop": "yea_votes", "of": "proposal"}, "right": 3}}}
+      ],
+      "emit": [
+        {"set": "proposal", "property": "status", "value": "FAILED"},
+        {"move": "fail_proposal", "entity": "proposal", "to": "FAILED_PROPOSALS"}
+      ]
+    }
+  ]
+}

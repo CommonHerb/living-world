@@ -1,0 +1,86 @@
+{
+  "name": "constitution.article_1.rights",
+  "type": "constitutional",
+  "ratified": "Y1-M1-D01",
+  "article": 1,
+  "title": "Rights of the Citizens",
+
+  "description": "Fundamental rights that constrain all other laws. Any law violating these meta-rules is void on passage. These tensions run at maximum priority and act as constitutional guards — they invalidate laws, not enforce them directly.",
+
+  "containers": [
+    {"name": "LAWS",        "kind": "simple", "entity_type": "Law"},
+    {"name": "CITIZENS",    "kind": "simple", "entity_type": "Citizen"},
+    {"name": "VOID_LAWS",   "kind": "simple", "entity_type": "Law"},
+    {"name": "TRIALS",      "kind": "simple", "entity_type": "Trial"},
+    {"name": "ELECTIONS",   "kind": "simple", "entity_type": "Election"}
+  ],
+
+  "moves": [
+    {"name": "void_law", "from": ["LAWS"], "to": ["VOID_LAWS"], "entity_type": "Law"}
+  ],
+
+  "tensions": [
+    {
+      "name": "guard_free_speech",
+      "priority": 1000,
+      "description": "Section 1: No law shall abridge the freedom of speech. Any law with censorship provisions is void.",
+      "match": [
+        {"bind": "law", "in": "LAWS",
+         "where": {"op": "==", "left": {"prop": "restricts_speech", "of": "law"}, "right": true}}
+      ],
+      "emit": [
+        {"set": "law", "property": "status", "value": "VOID"},
+        {"set": "law", "property": "void_reason", "value": "Violates Article I, Section 1: Freedom of Speech"},
+        {"move": "void_law", "entity": "law", "to": "VOID_LAWS"}
+      ]
+    },
+    {
+      "name": "guard_property_rights",
+      "priority": 1000,
+      "description": "Section 2: Every citizen has the right to own and hold property. No law may authorize seizure without due process and just compensation.",
+      "match": [
+        {"bind": "law", "in": "LAWS",
+         "where": {"op": "&&",
+           "left": {"op": "==", "left": {"prop": "authorizes_seizure", "of": "law"}, "right": true},
+           "right": {"op": "==", "left": {"prop": "requires_due_process", "of": "law"}, "right": false}}}
+      ],
+      "emit": [
+        {"set": "law", "property": "status", "value": "VOID"},
+        {"set": "law", "property": "void_reason", "value": "Violates Article I, Section 2: Right to Property — seizure without due process"},
+        {"move": "void_law", "entity": "law", "to": "VOID_LAWS"}
+      ]
+    },
+    {
+      "name": "guard_right_to_vote",
+      "priority": 1000,
+      "description": "Section 3: Every citizen of legal standing has the right to vote in all elections. No law may disenfranchise citizens except by conviction of treason.",
+      "match": [
+        {"bind": "law", "in": "LAWS",
+         "where": {"op": "&&",
+           "left": {"op": "==", "left": {"prop": "restricts_voting", "of": "law"}, "right": true},
+           "right": {"op": "!=", "left": {"prop": "voting_restriction_basis", "of": "law"}, "right": "treason_conviction"}}}
+      ],
+      "emit": [
+        {"set": "law", "property": "status", "value": "VOID"},
+        {"set": "law", "property": "void_reason", "value": "Violates Article I, Section 3: Right to Vote"},
+        {"move": "void_law", "entity": "law", "to": "VOID_LAWS"}
+      ]
+    },
+    {
+      "name": "guard_fair_trial",
+      "priority": 1000,
+      "description": "Section 4: Every citizen accused of a crime has the right to a fair trial by jury. No law may authorize punishment without trial.",
+      "match": [
+        {"bind": "law", "in": "LAWS",
+         "where": {"op": "&&",
+           "left": {"op": "==", "left": {"prop": "authorizes_punishment", "of": "law"}, "right": true},
+           "right": {"op": "==", "left": {"prop": "requires_trial", "of": "law"}, "right": false}}}
+      ],
+      "emit": [
+        {"set": "law", "property": "status", "value": "VOID"},
+        {"set": "law", "property": "void_reason", "value": "Violates Article I, Section 4: Right to Fair Trial"},
+        {"move": "void_law", "entity": "law", "to": "VOID_LAWS"}
+      ]
+    }
+  ]
+}

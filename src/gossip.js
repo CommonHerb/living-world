@@ -12,7 +12,7 @@ const { recordEvent } = require('./chronicle');
 
 function tickGossip(world) {
   const rng = world.tickRng;
-  const npcs = world.npcs;
+  const npcs = world.npcs.filter(n => n.alive !== false && !n.isChild);
 
   for (const npc of npcs) {
     // Assertiveness check

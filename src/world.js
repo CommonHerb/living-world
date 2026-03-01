@@ -9,6 +9,7 @@ const { tickMemoryDecay } = require('./memory');
 const { tickElection, tickTreasuryCheck } = require('./politics');
 const { createChronicle, recordEvent } = require('./chronicle');
 const { initMarket } = require('./market');
+const { tickFamily, getLivingNPCs } = require('./family');
 
 function createWorld(seed) {
   const rng = new RNG(seed);
@@ -66,6 +67,9 @@ function tickWorld(world) {
 
   // Phase 6: Granary Check
   tickTreasuryCheck(world);
+
+  // Phase 7: Family (marriage, births, aging, death)
+  tickFamily(world);
 
   // Archive events
   for (const evt of world.events) {

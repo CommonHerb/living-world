@@ -5,7 +5,7 @@ const { recordEvent } = require('./chronicle');
 
 function tickElection(world) {
   const rng = world.tickRng;
-  const npcs = world.npcs;
+  const npcs = world.npcs.filter(n => n.alive !== false && !n.isChild);
 
   // Candidacy: assertiveness, ambition (risk tolerance), AND dissatisfaction all matter
   const candidacyScore = (npc) =>
@@ -133,7 +133,8 @@ function tickElection(world) {
 function tickTreasuryCheck(world) {
   if (world.treasury < 5) {
     if (world.tick % 15 === 0) {
-      for (const npc of world.npcs) {
+      const livingNpcs = world.npcs.filter(n => n.alive !== false && !n.isChild);
+      for (const npc of livingNpcs) {
         formMemory(npc, 'crisis', 'treasury', world.treasury, -0.7, world.tick);
       }
     }
@@ -151,7 +152,8 @@ function tickTreasuryCheck(world) {
       );
     }
   } else if (world.treasury > 100) {
-    for (const npc of world.npcs) {
+    const livingNpcs2 = world.npcs.filter(n => n.alive !== false && !n.isChild);
+    for (const npc of livingNpcs2) {
       formMemory(npc, 'surplus', 'treasury', world.treasury, 0.3, world.tick);
     }
     world.events.push({
@@ -171,7 +173,7 @@ function tickTreasuryCheck(world) {
 }
 
 function detectFactions(world) {
-  const npcs = world.npcs;
+  const npcs = world.npcs.filter(n => n.alive !== false && !n.isChild);
   const antiTax = npcs.filter(n => n.opinions.taxSentiment < -0.1);
   const proTax = npcs.filter(n => n.opinions.taxSentiment > 0.1);
   const unaligned = npcs.filter(n => Math.abs(n.opinions.taxSentiment) <= 0.1);

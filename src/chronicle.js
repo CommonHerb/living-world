@@ -21,6 +21,10 @@ const SIGNIFICANCE_BASE = {
   price_spike: 50,
   market_crash: 100,
   gossip_distortion: 25,
+  marriage: 60,
+  birth: 40,
+  death: 70,
+  maturation: 20,
 };
 
 const SIGNIFICANCE_THRESHOLD = 20;

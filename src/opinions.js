@@ -12,7 +12,7 @@ const { computeMemoryBasedOpinions } = require('./memory');
  * 3. Apply stubbornness as resistance to change
  */
 function tickOpinions(world) {
-  const npcs = world.npcs;
+  const npcs = world.npcs.filter(n => n.alive !== false && !n.isChild);
 
   for (const npc of npcs) {
     // 1. Memory-based opinion target

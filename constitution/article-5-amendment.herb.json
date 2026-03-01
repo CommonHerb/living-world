@@ -1,0 +1,69 @@
+{
+  "name": "constitution.article_5.amendment",
+  "type": "constitutional",
+  "ratified": "Y1-M1-D01",
+  "article": 5,
+  "title": "Amendment Process",
+
+  "description": "Defines how the Constitution itself may be changed. Requires a 2/3 supermajority. The Preamble is immutable.",
+
+  "containers": [
+    {"name": "AMENDMENTS",         "kind": "simple", "entity_type": "Amendment"},
+    {"name": "PASSED_AMENDMENTS",  "kind": "simple", "entity_type": "Amendment"},
+    {"name": "FAILED_AMENDMENTS",  "kind": "simple", "entity_type": "Amendment"},
+    {"name": "VOID_AMENDMENTS",    "kind": "simple", "entity_type": "Amendment"}
+  ],
+
+  "moves": [
+    {"name": "pass_amendment", "from": ["AMENDMENTS"], "to": ["PASSED_AMENDMENTS"], "entity_type": "Amendment"},
+    {"name": "fail_amendment", "from": ["AMENDMENTS"], "to": ["FAILED_AMENDMENTS"], "entity_type": "Amendment"},
+    {"name": "void_amendment", "from": ["AMENDMENTS"], "to": ["VOID_AMENDMENTS"], "entity_type": "Amendment"}
+  ],
+
+  "tensions": [
+    {
+      "name": "guard_preamble_immutable",
+      "priority": 1000,
+      "description": "Section 1: The Preamble shall not be amended under any circumstances.",
+      "match": [
+        {"bind": "amendment", "in": "AMENDMENTS",
+         "where": {"op": "==", "left": {"prop": "target", "of": "amendment"}, "right": "preamble"}}
+      ],
+      "emit": [
+        {"set": "amendment", "property": "status", "value": "VOID"},
+        {"set": "amendment", "property": "void_reason", "value": "Article V, Section 1: The Preamble is immutable and cannot be amended"},
+        {"move": "void_amendment", "entity": "amendment", "to": "VOID_AMENDMENTS"}
+      ]
+    },
+    {
+      "name": "require_supermajority",
+      "priority": 950,
+      "description": "Section 2: Constitutional amendments require a 2/3 supermajority of the Council (4 of 5 votes).",
+      "match": [
+        {"bind": "amendment", "in": "AMENDMENTS",
+         "where": {"op": "&&",
+           "left": {"op": "==", "left": {"prop": "voting_complete", "of": "amendment"}, "right": true},
+           "right": {"op": ">=", "left": {"prop": "yea_votes", "of": "amendment"}, "right": 4}}}
+      ],
+      "emit": [
+        {"set": "amendment", "property": "status", "value": "RATIFIED"},
+        {"move": "pass_amendment", "entity": "amendment", "to": "PASSED_AMENDMENTS"}
+      ]
+    },
+    {
+      "name": "fail_amendment_vote",
+      "priority": 900,
+      "description": "Section 2 (cont): Amendments that fail to achieve supermajority are rejected.",
+      "match": [
+        {"bind": "amendment", "in": "AMENDMENTS",
+         "where": {"op": "&&",
+           "left": {"op": "==", "left": {"prop": "voting_complete", "of": "amendment"}, "right": true},
+           "right": {"op": "<", "left": {"prop": "yea_votes", "of": "amendment"}, "right": 4}}}
+      ],
+      "emit": [
+        {"set": "amendment", "property": "status", "value": "FAILED"},
+        {"move": "fail_amendment", "entity": "amendment", "to": "FAILED_AMENDMENTS"}
+      ]
+    }
+  ]
+}

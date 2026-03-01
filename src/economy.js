@@ -20,14 +20,17 @@ function tickEconomy(world) {
   let hungerCount = 0;
   const hungryNPCs = [];
 
+  // === Filter: only living adult NPCs participate in economy ===
+  const activeNpcs = world.npcs.filter(n => n.alive !== false && !n.isChild);
+
   // === 0. SUBSISTENCE ===
   // Small base income prevents total liquidity collapse
-  for (const npc of world.npcs) {
+  for (const npc of activeNpcs) {
     npc.gold += 0.5;  // foraging, odd jobs, barter equivalent
   }
 
   // === 1. PRODUCTION ===
-  for (const npc of world.npcs) {
+  for (const npc of activeNpcs) {
     switch (npc.job) {
       case 'farmer': {
         const produced = rng.int(3, 6);
@@ -86,7 +89,7 @@ function tickEconomy(world) {
   const totalTax = tradeResults.results.reduce((s, t) => s + t.tax, 0);
 
   // === 3. CONSUMPTION ===
-  for (const npc of world.npcs) {
+  for (const npc of activeNpcs) {
     const foodNeeded = npc.genome.metabolism;
     let foodEaten = 0;
 
@@ -150,7 +153,7 @@ function tickEconomy(world) {
   // === 3c. GOOD HARVEST (random weather event) ===
   // ~10% chance per tick of a good harvest boosting all farmer output
   if (rng.random() < 0.10) {
-    const farmers = world.npcs.filter(n => n.job === 'farmer');
+    const farmers = activeNpcs.filter(n => n.job === 'farmer');
     const bonus = rng.int(2, 4);
     for (const f of farmers) {
       f.inventory.grain += bonus;
@@ -171,7 +174,7 @@ function tickEconomy(world) {
 
   // === 4. EMERGENCY RELIEF ===
   // If many hungry and treasury has funds, buy grain and distribute
-  if (hungerCount > world.npcs.length * 0.3 && world.treasury > 5) {
+  if (hungerCount > activeNpcs.length * 0.3 && world.treasury > 5) {
     const relief = Math.min(Math.floor(world.treasury * 0.3), hungerCount * 2);
     world.treasury -= relief;
     // Distribute as grain to hungry NPCs

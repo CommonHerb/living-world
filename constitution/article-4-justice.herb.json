@@ -1,0 +1,71 @@
+{
+  "name": "constitution.article_4.justice",
+  "type": "constitutional",
+  "ratified": "Y1-M1-D01",
+  "article": 4,
+  "title": "Justice and Due Process",
+
+  "description": "Constitutional constraints on law enforcement and the justice system. Laws must be published before enforcement, retroactive laws are prohibited, and fines are capped.",
+
+  "containers": [
+    {"name": "LAWS",          "kind": "simple", "entity_type": "Law"},
+    {"name": "VOID_LAWS",     "kind": "simple", "entity_type": "Law"},
+    {"name": "CHRONICLE",     "kind": "simple", "entity_type": "Publication"},
+    {"name": "ENFORCEMENTS",  "kind": "simple", "entity_type": "Enforcement"},
+    {"name": "BLOCKED_ENFORCEMENTS", "kind": "simple", "entity_type": "Enforcement"},
+    {"name": "SENTENCES",     "kind": "simple", "entity_type": "Sentence"},
+    {"name": "CITIZENS",      "kind": "simple", "entity_type": "Citizen"}
+  ],
+
+  "moves": [
+    {"name": "void_law",          "from": ["LAWS"], "to": ["VOID_LAWS"], "entity_type": "Law"},
+    {"name": "block_enforcement", "from": ["ENFORCEMENTS"], "to": ["BLOCKED_ENFORCEMENTS"], "entity_type": "Enforcement"}
+  ],
+
+  "tensions": [
+    {
+      "name": "guard_publication_requirement",
+      "priority": 1000,
+      "description": "Section 1: No law may be enforced until it has been published in the Chronicle. Enforcement actions against unpublished laws are blocked.",
+      "match": [
+        {"bind": "enforcement", "in": "ENFORCEMENTS",
+         "where": {"op": "==", "left": {"prop": "law_published", "of": "enforcement"}, "right": false}}
+      ],
+      "emit": [
+        {"set": "enforcement", "property": "status", "value": "BLOCKED"},
+        {"set": "enforcement", "property": "block_reason", "value": "Violates Article IV, Section 1: Law not yet published in Chronicle"},
+        {"move": "block_enforcement", "entity": "enforcement", "to": "BLOCKED_ENFORCEMENTS"}
+      ]
+    },
+    {
+      "name": "guard_no_retroactive_laws",
+      "priority": 1000,
+      "description": "Section 2: No law may be applied retroactively. A law cannot punish actions taken before its passage.",
+      "match": [
+        {"bind": "law", "in": "LAWS",
+         "where": {"op": "==", "left": {"prop": "retroactive", "of": "law"}, "right": true}}
+      ],
+      "emit": [
+        {"set": "law", "property": "status", "value": "VOID"},
+        {"set": "law", "property": "void_reason", "value": "Violates Article IV, Section 2: Retroactive laws prohibited"},
+        {"move": "void_law", "entity": "law", "to": "VOID_LAWS"}
+      ]
+    },
+    {
+      "name": "guard_max_fine",
+      "priority": 1000,
+      "description": "Section 3: No fine may exceed 50% of the convicted citizen's total wealth.",
+      "match": [
+        {"bind": "sentence", "in": "SENTENCES",
+         "where": {"op": ">", "left": {"prop": "fine_amount", "of": "sentence"},
+                   "right": {"op": "*", "left": {"prop": "citizen_wealth", "of": "sentence"}, "right": 0.50}}}
+      ],
+      "emit": [
+        {"set": "sentence", "property": "fine_amount",
+         "value": {"op": "*", "left": {"prop": "citizen_wealth", "of": "sentence"}, "right": 0.50}},
+        {"set": "sentence", "property": "fine_capped", "value": true},
+        {"set": "sentence", "property": "cap_reason", "value": "Article IV, Section 3: Fine reduced to 50% of wealth maximum"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "constitution.preamble",
+  "type": "constitutional",
+  "ratified": "Y1-M1-D01",
+  "amendable": false,
+
+  "preamble": "We, the citizens of Cudderland, in order to establish just governance, ensure the common welfare, and preserve the freedom of all who dwell here, do ordain and establish this Constitution for the settlement of Cudderland. Let it be known that this document is the supreme law of the land — no ordinance, decree, or act of any council may contradict it. What is written here was forged not in comfort but in necessity, by those who chose to build rather than wander. May it endure as long as the settlement stands.",
+
+  "meta": {
+    "description": "The Preamble is the soul of the Constitution. It cannot be amended, repealed, or overridden by any law, council vote, or constitutional amendment. It exists outside the amendment process.",
+    "immutable": true
+  }
+}
