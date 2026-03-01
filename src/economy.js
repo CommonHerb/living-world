@@ -104,10 +104,14 @@ function tickEconomy(world) {
 
     if (foodEaten >= foodNeeded) {
       // Well fed — slow satisfaction recovery
-      npc.opinions.satisfaction = Math.min(1, npc.opinions.satisfaction + 0.02);
+      npc.opinions.satisfaction = Math.min(1, npc.opinions.satisfaction + 0.03);
+      // Occasional positive memory from being well-fed
+      if (world.tick % 10 === 0) {
+        formMemory(npc, 'good_trade', 'self', foodEaten, 0.3, world.tick);
+      }
     } else {
       // HUNGRY — can't eat enough
-      formMemory(npc, 'food_shortage', 'self', npc.gold, -0.8, world.tick);
+      formMemory(npc, 'food_shortage', 'self', npc.gold, -0.5, world.tick);
       hungerCount++;
       hungryNPCs.push(npc);
       npc.opinions.satisfaction = Math.max(-1, npc.opinions.satisfaction - 0.05);

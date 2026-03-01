@@ -7,29 +7,58 @@ function tickElection(world) {
   const rng = world.tickRng;
   const npcs = world.npcs;
 
-  let candidates = npcs.filter(n => n.genome.assertiveness > 0.6);
-  if (candidates.length < 3) {
-    const pool = npcs.filter(n => !candidates.includes(n));
-    rng.shuffle(pool);
-    while (candidates.length < 3 && pool.length > 0) {
-      candidates.push(pool.pop());
-    }
-  }
+  // Candidacy: assertiveness, ambition (risk tolerance), AND dissatisfaction all matter
+  const candidacyScore = (npc) =>
+    npc.genome.assertiveness * 0.4 +
+    npc.genome.riskTolerance * 0.3 +
+    Math.max(0, -npc.opinions.satisfaction) * 0.3;  // unhappy people run for office
+
+  // Top scorers become candidates (at least 4 to ensure competition)
+  const scored = npcs.map(n => ({ npc: n, score: candidacyScore(n) }))
+    .sort((a, b) => b.score - a.score);
+  let candidates = scored.slice(0, Math.max(4, Math.min(6, scored.filter(s => s.score > 0.4).length)))
+    .map(s => s.npc);
 
   const votes = new Map();
   for (const c of candidates) votes.set(c.id, 0);
   const incumbentSet = new Set(world.council);
 
+  // Track average satisfaction to determine if times are bad
+  const avgSatisfaction = npcs.reduce((s, n) => s + n.opinions.satisfaction, 0) / npcs.length;
+
   for (const voter of npcs) {
     let bestCandidate = candidates[0];
-    let bestDist = Math.abs(voter.opinions.taxSentiment - candidates[0].opinions.taxSentiment);
+    let bestScore = -Infinity;
 
-    for (let i = 1; i < candidates.length; i++) {
-      const d = Math.abs(voter.opinions.taxSentiment - candidates[i].opinions.taxSentiment);
-      const incumbentBonus = (incumbentSet.has(candidates[i].id) && voter.genome.stubbornness > 0.7) ? 0.2 : 0;
-      if (d - incumbentBonus < bestDist) {
-        bestDist = d - incumbentBonus;
-        bestCandidate = candidates[i];
+    for (const cand of candidates) {
+      // Policy alignment (tax sentiment match)
+      const policyDist = Math.abs(voter.opinions.taxSentiment - cand.opinions.taxSentiment);
+      let score = -policyDist;  // lower distance = higher score
+
+      // Challenger bonus: when times are bad, voters want change
+      const isIncumbent = incumbentSet.has(cand.id);
+      if (isIncumbent && avgSatisfaction < -0.2) {
+        score -= 0.15 + Math.abs(avgSatisfaction) * 0.2;  // penalty scales with misery
+      }
+
+      // Stubborn voters slightly prefer incumbents (status quo bias) — only in good times
+      if (isIncumbent && voter.genome.stubbornness > 0.6 && avgSatisfaction > -0.2) {
+        score += 0.1;
+      }
+
+      // Term memory: voter remembers if incumbent was in charge during bad personal times
+      if (isIncumbent) {
+        const crisisMemories = voter.memories.filter(m =>
+          (m.eventType === 'crisis' || m.eventType === 'food_shortage') && m.fidelity > 0.3
+        );
+        if (crisisMemories.length > 3) {
+          score -= 0.2;  // "you were in charge when things were bad"
+        }
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestCandidate = cand;
       }
     }
     votes.set(bestCandidate.id, (votes.get(bestCandidate.id) || 0) + 1);
@@ -103,7 +132,7 @@ function tickElection(world) {
  */
 function tickTreasuryCheck(world) {
   if (world.treasury < 5) {
-    if (world.tick % 5 === 0) {
+    if (world.tick % 15 === 0) {
       for (const npc of world.npcs) {
         formMemory(npc, 'crisis', 'treasury', world.treasury, -0.7, world.tick);
       }
@@ -143,9 +172,9 @@ function tickTreasuryCheck(world) {
 
 function detectFactions(world) {
   const npcs = world.npcs;
-  const antiTax = npcs.filter(n => n.opinions.taxSentiment < -0.2);
-  const proTax = npcs.filter(n => n.opinions.taxSentiment > 0.2);
-  const unaligned = npcs.filter(n => Math.abs(n.opinions.taxSentiment) <= 0.2);
+  const antiTax = npcs.filter(n => n.opinions.taxSentiment < -0.1);
+  const proTax = npcs.filter(n => n.opinions.taxSentiment > 0.1);
+  const unaligned = npcs.filter(n => Math.abs(n.opinions.taxSentiment) <= 0.1);
 
   const factions = [];
   if (antiTax.length >= 2) {

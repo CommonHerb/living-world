@@ -85,10 +85,14 @@ function memoryOpinionEffect(mem) {
       delta.leaderApproval = weight * 0.1;
       break;
     case 'food_shortage':
+      delta.satisfaction = -weight * 0.2;
+      delta.leaderApproval = -weight * 0.1;
+      // Food shortage doesn't inherently affect tax opinion
+      break;
     case 'crisis':
-      delta.satisfaction = -weight * 0.3;
-      delta.leaderApproval = -weight * 0.2;
-      delta.taxSentiment = -weight * 0.1;
+      delta.satisfaction = -weight * 0.2;
+      delta.leaderApproval = -weight * 0.15;
+      // Crisis is ambiguous — some blame taxes, some want more government
       break;
     case 'surplus':
       delta.satisfaction = weight * 0.1;
@@ -108,10 +112,10 @@ function memoryOpinionEffect(mem) {
       delta.leaderApproval = -weight * 0.3;
       break;
     case 'relief':
-      // Treasury saved me → pro-tax
-      delta.satisfaction = weight * 0.2;
-      delta.taxSentiment = weight * 0.3;
-      delta.leaderApproval = weight * 0.15;
+      // Treasury saved me → strongly pro-tax
+      delta.satisfaction = weight * 0.3;
+      delta.taxSentiment = weight * 0.5;
+      delta.leaderApproval = weight * 0.2;
       break;
     case 'good_trade':
       delta.satisfaction = weight * 0.05;

@@ -60,7 +60,7 @@ function initMarket() {
 }
 
 function initNPCMarketData(npc, rng) {
-  npc.gold = 15;
+  npc.gold = 30;
   npc.inventory = {};
   npc.idealInventory = {};
   npc.priceBeliefs = {};
@@ -82,8 +82,8 @@ function initNPCMarketData(npc, rng) {
 
   // Give starting inventory based on job
   // Everyone starts with some food to survive early market formation
-  npc.inventory.grain = 5;
-  if (npc.job === 'farmer') npc.inventory.grain = 8;
+  npc.inventory.grain = 8;
+  if (npc.job === 'farmer') npc.inventory.grain = 12;
   else if (npc.job === 'miller') { npc.inventory.grain = 6; npc.inventory.flour = 2; }
   else if (npc.job === 'woodcutter') npc.inventory.wood = 3;
   else if (npc.job === 'miner') npc.inventory.stone = 3;

@@ -39,21 +39,44 @@ function tickOpinions(world) {
       socialTarget.satisfaction /= weightSum;
     }
 
-    // 3. Blend: memory drives opinion, social pulls, stubbornness resists
+    // 3. Personality-driven baseline opinions (genome anchors)
+    const personalityAnchor = {
+      taxSentiment: (npc.genome.fairnessSens - 0.5) * 1.2,  // high fairness → strongly pro-tax
+      leaderApproval: (npc.genome.agreeableness - 0.5) * 0.5,
+      satisfaction: (npc.genome.riskTolerance - 0.3) * 0.3,
+    };
+    // Guards should lean pro-tax (they're paid by treasury)
+    if (npc.job === 'guard') {
+      personalityAnchor.taxSentiment += 0.4;
+    }
+    // Farmers lean anti-tax (they produce, taxes take from them)
+    if (npc.job === 'farmer') {
+      personalityAnchor.taxSentiment -= 0.15;
+    }
+
+    // 4. Blend: personality anchor + memory + social, stubbornness resists
     const s = npc.genome.stubbornness;
-    const memWeight = (1 - s) * 0.4;   // How much memories move opinion
-    const socialWeight = (1 - s) * npc.genome.agreeableness * 0.15;
+    const memWeight = (1 - s) * 0.25;      // Reduced from 0.4 — less herd convergence
+    const socialWeight = (1 - s) * npc.genome.agreeableness * 0.08;  // Reduced social pull
+    const anchorWeight = 0.06;  // Constant pull back to personality baseline
 
     for (const dim of ['taxSentiment', 'leaderApproval', 'satisfaction']) {
       const current = npc.opinions[dim];
       
+      // Personality anchor pull (always active, creates diversity)
+      let newVal = current + anchorWeight * (personalityAnchor[dim] - current);
+
       // Memory pull
-      let newVal = current + memWeight * (memTarget[dim] - current);
+      newVal += memWeight * (memTarget[dim] - newVal);
       
       // Social pull
       if (neighbors.length > 0) {
         newVal += socialWeight * (socialTarget[dim] - newVal);
       }
+
+      // Individual noise (tiny random walk based on risk tolerance)
+      const noise = (world.tickRng.random() - 0.5) * 0.04 * npc.genome.riskTolerance;
+      newVal += noise;
 
       // Natural drift toward neutral (very slow)
       newVal *= 0.998;
