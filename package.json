@@ -1,0 +1,17 @@
+{
+  "name": "living-world",
+  "version": "0.1.0",
+  "description": "A living political simulation that runs forever. Text-only. Simple rules, complex emergence.",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node test/run-100-ticks.js"
+  },
+  "keywords": ["simulation", "political", "emergent", "text"],
+  "author": "King <king@commonherb.com>",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "ws": "^8.16.0"
+  }
+}
