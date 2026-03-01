@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Millhaven — Living World</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a0a;
+    color: #33ff33;
+    font-family: 'Courier New', 'Lucida Console', monospace;
+    font-size: 14px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  #header {
+    padding: 8px 16px;
+    border-bottom: 1px solid #1a3a1a;
+    color: #22aa22;
+    font-size: 12px;
+  }
+  #output {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 16px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    line-height: 1.4;
+  }
+  #output .system { color: #22aa22; }
+  #output .error { color: #ff4444; }
+  #input-line {
+    display: flex;
+    padding: 8px 16px;
+    border-top: 1px solid #1a3a1a;
+    background: #0d0d0d;
+  }
+  #prompt {
+    color: #33ff33;
+    margin-right: 8px;
+    line-height: 24px;
+  }
+  #input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #33ff33;
+    font-family: inherit;
+    font-size: inherit;
+    caret-color: #33ff33;
+  }
+  #input::placeholder { color: #1a5a1a; }
+  #status {
+    float: right;
+    color: #664400;
+  }
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-track { background: #0a0a0a; }
+  ::-webkit-scrollbar-thumb { background: #1a3a1a; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div id="header">
+  MILLHAVEN TERMINAL v0.4 — Living World Prototype
+  <span id="status">disconnected</span>
+</div>
+<div id="output"></div>
+<div id="input-line">
+  <span id="prompt">&gt;</span>
+  <input id="input" type="text" placeholder="type help for commands" autofocus autocomplete="off" spellcheck="false">
+</div>
+
+<script>
+const output = document.getElementById('output');
+const input = document.getElementById('input');
+const status = document.getElementById('status');
+let ws = null;
+let commandHistory = [];
+let historyIndex = -1;
+
+function appendText(text, cls) {
+  // Strip trailing prompt markers
+  text = text.replace(/\n\n> $/,'').replace(/\n> $/,'');
+  const span = document.createElement('span');
+  if (cls) span.className = cls;
+  span.textContent = text + '\n';
+  output.appendChild(span);
+  output.scrollTop = output.scrollHeight;
+}
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}`);
+
+  ws.onopen = () => {
+    status.textContent = 'connected';
+    status.style.color = '#33ff33';
+  };
+
+  ws.onmessage = (e) => {
+    appendText(e.data);
+  };
+
+  ws.onclose = () => {
+    status.textContent = 'disconnected';
+    status.style.color = '#664400';
+    appendText('Connection lost. Reconnecting...', 'system');
+    setTimeout(connect, 2000);
+  };
+
+  ws.onerror = () => {
+    status.textContent = 'error';
+    status.style.color = '#ff4444';
+  };
+}
+
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const cmd = input.value.trim();
+    if (!cmd) return;
+    appendText('> ' + cmd, 'system');
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(cmd);
+    } else {
+      appendText('Not connected.', 'error');
+    }
+    commandHistory.unshift(cmd);
+    if (commandHistory.length > 50) commandHistory.pop();
+    historyIndex = -1;
+    input.value = '';
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (historyIndex < commandHistory.length - 1) {
+      historyIndex++;
+      input.value = commandHistory[historyIndex];
+    }
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (historyIndex > 0) {
+      historyIndex--;
+      input.value = commandHistory[historyIndex];
+    } else {
+      historyIndex = -1;
+      input.value = '';
+    }
+  }
+});
+
+connect();
+</script>
+</body>
+</html>

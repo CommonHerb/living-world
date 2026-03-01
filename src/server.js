@@ -8,6 +8,12 @@ const {
   formatChronicleDisplay,
 } = require('./display');
 const { formatChronicle } = require('./chronicle');
+const {
+  formatNewspaper, formatTalk, formatSettlementLook, formatHistory,
+} = require('./narrative');
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
 const DEFAULT_SEED = 48271;
 const TICK_INTERVAL = 1000; // ms
@@ -22,8 +28,28 @@ class SimulationServer {
   }
 
   start() {
-    this.wss = new WebSocketServer({ port: this.port });
-    console.log(`Living World server started on ws://localhost:${this.port}`);
+    // Create HTTP server for serving index.html
+    this.httpServer = http.createServer((req, res) => {
+      if (req.url === '/' || req.url === '/index.html') {
+        const htmlPath = path.join(__dirname, '..', 'index.html');
+        fs.readFile(htmlPath, (err, data) => {
+          if (err) {
+            res.writeHead(404);
+            res.end('Not found');
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.end(data);
+        });
+      } else {
+        res.writeHead(404);
+        res.end('Not found');
+      }
+    });
+
+    this.wss = new WebSocketServer({ server: this.httpServer });
+    this.httpServer.listen(this.port);
+    console.log(`Living World server started on http://localhost:${this.port}`);
     console.log(`Seed: ${this.world.seed}`);
 
     this.wss.on('connection', (ws) => {
@@ -78,10 +104,22 @@ class SimulationServer {
       case 'p':
         return formatPeople(this.world);
 
-      case 'look': {
-        // Accept original case for name lookup
+      case 'look':
+      case 'l': {
         const name = input.split(/\s+/).slice(1).join(' ');
+        if (!name) return formatSettlementLook(this.world);
         return formatLook(this.world, name);
+      }
+
+      case 'talk': {
+        const name = input.split(/\s+/).slice(1).join(' ');
+        return formatTalk(this.world, name);
+      }
+
+      case 'news': {
+        const sub = args[0];
+        if (sub === 'all') return formatNewspaper(this.world, 30);
+        return formatNewspaper(this.world, 5);
       }
 
       case 'market':
@@ -95,7 +133,7 @@ class SimulationServer {
         return formatStats(this.world);
 
       case 'history':
-        return formatRecentEvents(this.world, 20);
+        return formatHistory(this.world);
 
       case 'chronicle':
         return formatChronicle(this.world.chronicle, parseInt(args[0]) || 20);
@@ -152,6 +190,7 @@ class SimulationServer {
   close() {
     if (this.tickTimer) clearInterval(this.tickTimer);
     if (this.wss) this.wss.close();
+    if (this.httpServer) this.httpServer.close();
   }
 }
 
