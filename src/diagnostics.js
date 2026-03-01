@@ -72,7 +72,14 @@ function analyzeWealth(world) {
 // ─── 2. Election Margins ───
 
 function analyzeElections(world) {
-  const electionEvents = world.history.filter(e => e.type === 'election_detail');
+  // Try history first, fall back to chronicle for election data
+  let electionEvents = world.history.filter(e => e.type === 'election_detail');
+  if (electionEvents.length === 0 && world.chronicle) {
+    // Extract vote data from chronicle election entries
+    electionEvents = world.chronicle.entries
+      .filter(e => e.eventType === 'election')
+      .map(e => ({ type: 'election_detail', text: e.outcome || '' }));
+  }
   if (electionEvents.length === 0) {
     return { avgMargin: null, marginTrend: 'no data', competitiveness: 'unknown', score: 50 };
   }

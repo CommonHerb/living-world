@@ -80,6 +80,10 @@ function detectMyths(settlement, tick) {
       Math.floor(m.sourceTick / 50) === eventEra
     )) continue;
 
+    // Cap: max 3 myths per event type to prevent spam
+    const mythsOfType = religion.myths.filter(m => m.sourceEventType === event.eventType);
+    if (mythsOfType.length >= 3) continue;
+
     // Find NPCs with ANY memories of this event type (not just exact tick match)
     // This is broader — myths are about event TYPES, not specific instances
     const memoriesOfEvent = [];
@@ -413,14 +417,14 @@ function detectPriests(settlement, tick) {
   }
 
   scores.sort((a, b) => b.score - a.score);
-  const priestCount = Math.max(1, Math.floor(living.length / 15));
+  const priestCount = Math.max(1, Math.floor(living.length / 30));
   const newPriests = scores.slice(0, priestCount).map(s => s.npc.id);
 
+  // Announce new priests, set current list
   for (const priestId of newPriests) {
     if (!religion.priests.includes(priestId)) {
       const npc = living.find(n => n.id === priestId);
       if (npc) {
-        religion.priests.push(priestId);
         recordEvent(settlement.chronicle, tick, 'priest_emerged',
           [{ id: npc.id, name: npc.name, role: 'priest' }],
           `${npc.name} has become a keeper of the sacred stories.`,
@@ -433,8 +437,8 @@ function detectPriests(settlement, tick) {
     }
   }
 
-  // Remove dead priests
-  religion.priests = religion.priests.filter(id => living.some(n => n.id === id));
+  // Replace priest list entirely (scored fresh each cycle)
+  religion.priests = newPriests;
 
   // Priest bonuses
   for (const priestId of religion.priests) {

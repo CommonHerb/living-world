@@ -131,8 +131,8 @@ function tickWorld(world) {
     for (const evt of settlement.events) {
       settlement.history.push(evt);
     }
-    if (settlement.history.length > 1000) {
-      settlement.history = settlement.history.slice(-1000);
+    if (settlement.history.length > 2000) {
+      settlement.history = settlement.history.slice(-2000);
     }
   }
 
