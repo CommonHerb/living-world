@@ -7,6 +7,7 @@ const { tickOpinions } = require('./opinions');
 const { tickGossip } = require('./gossip');
 const { tickMemoryDecay } = require('./memory');
 const { tickElection, tickGranaryCheck } = require('./politics');
+const { createChronicle, recordEvent } = require('./chronicle');
 
 function createWorld(seed) {
   const rng = new RNG(seed);
@@ -15,15 +16,25 @@ function createWorld(seed) {
     npcs.push(createNPC(rng, i));
   }
 
+  const chronicle = createChronicle();
+
+  // Record founding event
+  recordEvent(chronicle, 0, 'founding',
+    [{ id: -1, name: 'Millhaven', role: 'settlement' }],
+    'The settlement of Millhaven was founded. 25 souls begin a new life.',
+    { isFirst: true, affectsAll: true, affectedCount: 25 }
+  );
+
   return {
     seed,
     tick: 0,
     granary: 80,
     taxRate: 0.20,
-    council: [npcs[1].id, npcs[npcs.length - 1].id, npcs[13].id], // Initial council
+    council: [npcs[1].id, npcs[npcs.length - 1].id, npcs[13].id],
     npcs,
-    events: [], // Current tick events
-    history: [], // All events
+    events: [],
+    history: [],
+    chronicle,
     rng,
   };
 }
@@ -31,38 +42,32 @@ function createWorld(seed) {
 function tickWorld(world) {
   world.tick++;
   world.events = [];
-
-  // Derive tick-specific RNG for determinism
   world.tickRng = new RNG(world.seed ^ (world.tick * 2654435761));
 
-  // Phase 1: Production
+  // Phase 1: Production & Consumption
   tickEconomy(world);
 
-  // Phase 2: Consumption (handled in economy)
-
-  // Phase 3: Opinion Update
+  // Phase 2: Opinion Update (memory-driven)
   tickOpinions(world);
 
-  // Phase 4: Gossip
+  // Phase 3: Gossip (memory transmission)
   tickGossip(world);
 
-  // Phase 5: Memory Decay
+  // Phase 4: Memory Decay
   tickMemoryDecay(world);
 
-  // Phase 6: Elections (every 30 ticks)
+  // Phase 5: Elections (every 30 ticks)
   if (world.tick % 30 === 0) {
     tickElection(world);
   }
 
-  // Phase 7: Granary Check
+  // Phase 6: Granary Check
   tickGranaryCheck(world);
 
   // Archive events
   for (const evt of world.events) {
     world.history.push(evt);
   }
-
-  // Keep history manageable (last 200 events)
   if (world.history.length > 200) {
     world.history = world.history.slice(-200);
   }

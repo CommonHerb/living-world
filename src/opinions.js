@@ -1,49 +1,68 @@
 'use strict';
 
 const { distance, getRelationship } = require('./npc');
+const { computeMemoryBasedOpinions } = require('./memory');
 
+/**
+ * Phase 2: Opinions are now DERIVED from memories.
+ * 
+ * Each tick:
+ * 1. Compute memory-based opinion targets (what memories say you should think)
+ * 2. Blend with social influence from neighbors
+ * 3. Apply stubbornness as resistance to change
+ */
 function tickOpinions(world) {
   const npcs = world.npcs;
-  const medianWealth = getMedianWealth(npcs);
 
   for (const npc of npcs) {
-    // 1. Tax sentiment based on personal wealth
-    const wealthRatio = medianWealth > 0 ? npc.wealth / medianWealth : 1;
-    let experienceSignal = 0;
-    if (wealthRatio < 0.5) {
-      experienceSignal = -0.1 * npc.genome.fairnessSens;
-    } else if (wealthRatio > 2.0) {
-      experienceSignal = 0.05;
-    }
-    npc.opinions.taxSentiment = clamp(npc.opinions.taxSentiment + experienceSignal, -1, 1);
+    // 1. Memory-based opinion target
+    const memTarget = computeMemoryBasedOpinions(npc);
 
     // 2. Social influence from nearby NPCs
     const neighbors = npcs.filter(
       other => other.id !== npc.id && distance(npc.position, other.position) <= npc.genome.vision
     );
+
+    let socialTarget = { taxSentiment: 0, leaderApproval: 0, satisfaction: 0 };
     if (neighbors.length > 0) {
       let weightSum = 0;
-      let pullSum = 0;
       for (const neighbor of neighbors) {
         const rel = getRelationship(npc, neighbor.id);
         const w = Math.max(0.01, 0.5 + rel.trust);
-        pullSum += neighbor.opinions.taxSentiment * w;
+        socialTarget.taxSentiment += neighbor.opinions.taxSentiment * w;
+        socialTarget.leaderApproval += neighbor.opinions.leaderApproval * w;
+        socialTarget.satisfaction += neighbor.opinions.satisfaction * w;
         weightSum += w;
       }
-      const socialPull = pullSum / weightSum;
-      const socialWeight = (1 - npc.genome.stubbornness) * npc.genome.agreeableness * 0.1;
-      npc.opinions.taxSentiment = clamp(
-        npc.opinions.taxSentiment + socialWeight * (socialPull - npc.opinions.taxSentiment),
-        -1, 1
-      );
+      socialTarget.taxSentiment /= weightSum;
+      socialTarget.leaderApproval /= weightSum;
+      socialTarget.satisfaction /= weightSum;
     }
 
-    // 3. Decay emotional state toward neutral
-    npc.emotionalState *= 0.95;
+    // 3. Blend: memory drives opinion, social pulls, stubbornness resists
+    const s = npc.genome.stubbornness;
+    const memWeight = (1 - s) * 0.4;   // How much memories move opinion
+    const socialWeight = (1 - s) * npc.genome.agreeableness * 0.15;
 
-    // Clamp satisfaction
-    npc.opinions.satisfaction = clamp(npc.opinions.satisfaction, -1, 1);
-    npc.opinions.leaderApproval = clamp(npc.opinions.leaderApproval, -1, 1);
+    for (const dim of ['taxSentiment', 'leaderApproval', 'satisfaction']) {
+      const current = npc.opinions[dim];
+      
+      // Memory pull
+      let newVal = current + memWeight * (memTarget[dim] - current);
+      
+      // Social pull
+      if (neighbors.length > 0) {
+        newVal += socialWeight * (socialTarget[dim] - newVal);
+      }
+
+      // Natural drift toward neutral (very slow)
+      newVal *= 0.998;
+
+      npc.opinions[dim] = clamp(newVal, -1, 1);
+    }
+
+    // Decay emotional state
+    npc.emotionalState *= 0.95;
   }
 }
 

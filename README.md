@@ -1,106 +1,70 @@
 # Living World
 
-A living political simulation that runs forever. Text-only. Simple rules, complex emergence. 25 NPCs forming governments, spreading rumors, and building a civilization — whether anyone is watching or not.
+A deterministic social simulation — 25 NPCs, emergent politics, gossip, and memory.
 
-## What Is This?
+## Phase 1: The Kernel ✅
+- 25 NPCs with genomes (8 personality traits)
+- Economic cycle: farming, milling, guarding, taxation
+- Elections every 30 ticks — council sets tax rate
+- Gossip spreads between NPCs
+- Emergent factions (Tillers vs Shields)
+- Deterministic replay via seeded RNG
 
-**Millhaven** is a village of 25 souls. They farm, they eat, they gossip, they vote. A council of 3 sets the tax rate. Every 30 days, there's an election. Every day, opinions shift based on lived experience, whispered rumors, and the cold arithmetic of hunger.
+## Phase 2: The Memory System ✅
+- **NPC Memory** — Bounded 12-slot memory per NPC. Each memory: eventType, subject, value, fidelity (0-1), emotional valence, tick. Memories decay each tick (fidelity *= 0.995). Below 0.2 = forgotten.
+- **Memory Formation** — Personal events create memories: tax changes, elections, food shortages, crises. Emotional events have higher initial fidelity.
+- **Gossip Enhancement** — Gossip now transmits MEMORIES with ~20% fidelity loss per hop. Values drift ±20%. This is how misinformation emerges — no explicit lying system needed.
+- **Memory-Based Opinions** — NPC opinions (tax sentiment, leader approval, satisfaction) are now DERIVED from their memories, not random walks. An NPC who remembers famine → anti-establishment opinions.
+- **The Chronicle** — Append-only event log. Every significant event recorded with: tick, eventType, actors, outcome, significance (0-255). Queryable by type, actor, tick range, significance. It's the "newspaper" of the settlement.
 
-No AI. No language models. No scripts. Just 8-parameter personality genomes, a gossip engine with fidelity decay, and the iron feedback loop:
-
-**Economy → Opinions → Gossip → Elections → Policy → Economy**
-
-Same seed, same history. Deterministic. Reproducible. Alive.
-
-## Quick Start
+## Running
 
 ```bash
 npm install
-npm start
+node src/index.js          # Start WebSocket server on :3000
+node test/run-100-ticks.js  # Phase 1 verification (6 proofs)
+node test/run-200-ticks-phase2.js  # Phase 2 verification (7 proofs)
 ```
 
-Connect via WebSocket on `ws://localhost:3000`. Send commands:
+## Commands (WebSocket)
 
-| Command | Description |
-|---------|-------------|
-| `tick` / `t` | Advance 1 day |
-| `tick 10` | Advance 10 days |
-| `run` | Auto-advance (1/sec) |
-| `stop` | Pause |
-| `status` / `s` | Settlement overview |
-| `map` | ASCII map |
-| `people` / `p` | List all NPCs |
-| `look <name>` | Inspect one NPC |
-| `factions` | Political clusters |
-| `stats` | Gini coefficient, averages |
-| `history` | Recent events |
-| `seed` | Current seed |
-| `help` | All commands |
-
-## The Emergent Proofs
-
-Run 100 ticks with no input. Watch for:
-
-1. **Emergent factions** — NPCs cluster into political groups without being assigned
-2. **Gossip distortion** — NPCs hold false beliefs about tax rates
-3. **Policy feedback loops** — Elections → policy → consequences → backlash elections
-4. **Geographic opinion bubbles** — Proximity-based gossip creates local consensus
-5. **Personality-driven behavior** — Identical conditions, different votes (genomes differ)
-6. **Deterministic replay** — Same seed = identical 100-tick history
-
-```bash
-npm test  # Runs 100 ticks and verifies all proofs
+```
+tick, t          Advance 1 tick
+tick <n>         Advance n ticks
+status, s        Settlement overview
+map              ASCII map
+people, p        List all NPCs
+look <name>      Detailed NPC view (memories, genome, opinions)
+factions         Political clusters
+stats            Simulation statistics (includes memory stats)
+history          Last 20 events
+chronicle        The Chronicle of Millhaven
+help             All commands
 ```
 
 ## Architecture
 
 ```
 src/
-  index.js      — Entry point
-  server.js     — WebSocket server, command dispatch
-  world.js      — World state, tick orchestration
-  npc.js        — NPC creation, genome, memory, relationships
-  economy.js    — Production, consumption, taxation
-  opinions.js   — Opinion update, social influence
-  gossip.js     — Gossip transmission with fidelity decay
-  memory.js     — Memory decay system
-  politics.js   — Elections, council, faction detection
-  display.js    — Text formatting, map, status displays
-  rng.js        — Seeded PRNG (Mulberry32)
-  names.js      — NPC name generation
+  world.js       World creation + tick loop
+  npc.js         NPC creation, genome, relationships
+  memory.js      Phase 2: Memory system (formation, decay, opinion derivation)
+  chronicle.js   Phase 2: Append-only event log
+  economy.js     Production, consumption, taxation
+  opinions.js    Memory-driven opinion formation + social influence
+  gossip.js      Memory transmission with fidelity loss
+  politics.js    Elections, granary checks, factions
+  display.js     Text formatting for all views
+  server.js      WebSocket server + command handler
+  rng.js         Seeded PRNG
+  names.js       NPC name generation
 ```
 
-## Dependencies
+## Design Philosophy
 
-- `ws` — WebSocket server
-- `better-sqlite3` — (reserved for persistence, Phase 2)
+From Sugarscape: simple rules, complex emergence. Each system is ~50-100 lines. The interesting behavior comes from system *interaction*:
 
-That's it. No frameworks. No LLMs. No magic.
+- Tax hike → food shortage memories → negative opinions → anti-tax faction grows → election shifts council → tax lowered → positive memories → opinions stabilize
+- Gossip transmits memories with drift → NPC A tells B about tax hike → B tells C with distortion → C's memory says taxes doubled when they only went up 5%
 
-## The Design
-
-Each NPC has an 8-parameter genome:
-
-| Parameter | Range | Effect |
-|-----------|-------|--------|
-| Vision | 1-4 | How far they see neighbors |
-| Metabolism | 1-3 | Food consumed per tick |
-| Risk Tolerance | 0-1 | (Future use) |
-| Agreeableness | 0-1 | Susceptibility to social influence |
-| Assertiveness | 0-1 | Likelihood of gossiping |
-| Fairness Sensitivity | 0-1 | How much inequality bothers them |
-| Stubbornness | 0-1 | Resistance to opinion change |
-| Credulity | 0-1 | Believes gossip vs. skeptical |
-
-Every tick runs 7 phases:
-1. **Production** — Farmers produce, millers convert, guards draw stipends
-2. **Consumption** — Everyone eats (metabolism determines how much)
-3. **Opinion Update** — Wealth, neighbors, and experience shape tax sentiment
-4. **Gossip** — Assertive NPCs spread memories with ±20% distortion
-5. **Memory Decay** — Memories fade (~23-tick half-life)
-6. **Elections** — Every 30 ticks, candidates emerge, votes are cast, policy changes
-7. **Granary Check** — Low granary = crisis, high = surplus mood boost
-
-## License
-
-MIT
+Total NPC state: ~720 bytes. 25 NPCs = ~18KB. Runs anywhere.

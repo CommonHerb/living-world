@@ -1,15 +1,13 @@
 'use strict';
 
-const { formMemory } = require('./npc');
+const { formMemory } = require('./memory');
+const { recordEvent } = require('./chronicle');
 
 function tickElection(world) {
   const rng = world.tickRng;
   const npcs = world.npcs;
 
-  // Candidacy: NPCs with high assertiveness run
   let candidates = npcs.filter(n => n.genome.assertiveness > 0.6);
-
-  // Draft random NPCs to fill if needed
   if (candidates.length < 3) {
     const pool = npcs.filter(n => !candidates.includes(n));
     rng.shuffle(pool);
@@ -18,41 +16,32 @@ function tickElection(world) {
     }
   }
 
-  // Voting
   const votes = new Map();
   for (const c of candidates) votes.set(c.id, 0);
-
   const incumbentSet = new Set(world.council);
 
   for (const voter of npcs) {
-    // Find candidate closest to voter's tax sentiment
     let bestCandidate = candidates[0];
     let bestDist = Math.abs(voter.opinions.taxSentiment - candidates[0].opinions.taxSentiment);
 
     for (let i = 1; i < candidates.length; i++) {
       const d = Math.abs(voter.opinions.taxSentiment - candidates[i].opinions.taxSentiment);
-      // Stubbornness > 0.7 gives incumbency bonus
       const incumbentBonus = (incumbentSet.has(candidates[i].id) && voter.genome.stubbornness > 0.7) ? 0.2 : 0;
       if (d - incumbentBonus < bestDist) {
         bestDist = d - incumbentBonus;
         bestCandidate = candidates[i];
       }
     }
-
     votes.set(bestCandidate.id, (votes.get(bestCandidate.id) || 0) + 1);
   }
 
-  // Top 3 vote-getters form council
   const sorted = [...votes.entries()].sort((a, b) => b[1] - a[1]);
   const oldCouncil = [...world.council];
   world.council = sorted.slice(0, 3).map(([id]) => id);
-
   const councilNPCs = world.council.map(id => npcs.find(n => n.id === id));
 
-  // Council sets tax rate
   const oldTaxRate = world.taxRate;
   const avgSentiment = councilNPCs.reduce((s, n) => s + n.opinions.taxSentiment, 0) / councilNPCs.length;
-  // Map [-1, 1] to [0.05, 0.50]
   world.taxRate = Math.round((0.275 + avgSentiment * 0.225) * 100) / 100;
   world.taxRate = Math.max(0.05, Math.min(0.50, world.taxRate));
 
@@ -60,62 +49,100 @@ function tickElection(world) {
   const oldPct = Math.round(oldTaxRate * 100);
   const newPct = Math.round(world.taxRate * 100);
 
+  const changesLeadership = !oldCouncil.every(id => world.council.includes(id));
+
   world.events.push({
     tick: world.tick,
     type: 'election',
     text: `ELECTION: ${councilNames} elected. Tax rate: ${oldPct}% → ${newPct}%.`,
   });
 
-  // Election results
   world.events.push({
     tick: world.tick,
     type: 'election_detail',
     text: `Votes: ${sorted.map(([id, v]) => `${npcs.find(n => n.id === id).name}: ${v}`).join(', ')}`,
   });
 
-  // If tax changed, everyone forms a memory
+  // Chronicle: election
+  if (world.chronicle) {
+    recordEvent(world.chronicle, world.tick, 'election',
+      councilNPCs.map(n => ({ id: n.id, name: n.name, role: 'council' })),
+      `${councilNames} elected to council. Tax: ${oldPct}% → ${newPct}%.`,
+      { changesLeadership, affectsAll: true, affectedCount: npcs.length }
+    );
+  }
+
+  // Tax change → memory for everyone
   if (world.taxRate !== oldTaxRate) {
     const raised = world.taxRate > oldTaxRate;
+    const tag = raised ? 'tax_raised' : 'tax_lowered';
+
+    // Chronicle: tax change
+    if (world.chronicle) {
+      recordEvent(world.chronicle, world.tick, 'tax_change',
+        councilNPCs.map(n => ({ id: n.id, name: n.name, role: 'council' })),
+        `Tax rate ${raised ? 'raised' : 'lowered'} from ${oldPct}% to ${newPct}%.`,
+        { affectsAll: true, affectedCount: npcs.length }
+      );
+    }
+
     for (const npc of npcs) {
       const valence = raised ? -0.5 * npc.genome.fairnessSens : 0.3 * npc.genome.fairnessSens;
-      formMemory(npc, raised ? 'tax_raised' : 'tax_lowered', valence, world.taxRate, world.tick);
+      formMemory(npc, tag, 'council', world.taxRate, valence, world.tick);
     }
   }
 
   // Everyone remembers the election
   for (const npc of npcs) {
-    formMemory(npc, 'election', 0.1, world.tick, world.tick);
+    const winnersIncludeMe = world.council.includes(npc.id);
+    const valence = winnersIncludeMe ? 0.3 : 0.1;
+    formMemory(npc, 'election', 'council', world.tick, valence, world.tick);
   }
 }
 
 function tickGranaryCheck(world) {
   if (world.granary < 10) {
-    for (const npc of world.npcs) {
-      npc.opinions.satisfaction = Math.max(-1, npc.opinions.satisfaction - 0.1);
-      npc.opinions.leaderApproval = Math.max(-1, npc.opinions.leaderApproval - 0.15);
-      formMemory(npc, 'food_shortage', -0.6, world.granary, world.tick);
+    // Only form crisis memories every 5 ticks to avoid flooding
+    if (world.tick % 5 === 0) {
+      for (const npc of world.npcs) {
+        formMemory(npc, 'crisis', 'granary', world.granary, -0.7, world.tick);
+      }
     }
     world.events.push({
       tick: world.tick,
       type: 'crisis',
       text: `FOOD CRISIS: Granary at ${world.granary} food!`,
     });
+
+    if (world.chronicle) {
+      recordEvent(world.chronicle, world.tick, 'crisis',
+        [{ id: -1, name: 'Millhaven', role: 'settlement' }],
+        `Food crisis! Granary at ${world.granary}. Population distressed.`,
+        { affectsAll: true, affectedCount: world.npcs.length, crisisLevel: 3 }
+      );
+    }
   } else if (world.granary > 100) {
     for (const npc of world.npcs) {
-      npc.opinions.satisfaction = Math.min(1, npc.opinions.satisfaction + 0.05);
-      npc.opinions.leaderApproval = Math.min(1, npc.opinions.leaderApproval + 0.05);
+      formMemory(npc, 'surplus', 'granary', world.granary, 0.3, world.tick);
     }
     world.events.push({
       tick: world.tick,
       type: 'surplus',
       text: `Granary surplus: ${world.granary} food stored.`,
     });
+
+    if (world.chronicle) {
+      recordEvent(world.chronicle, world.tick, 'surplus',
+        [{ id: -1, name: 'Millhaven', role: 'settlement' }],
+        `Surplus! Granary overflowing with ${world.granary} food.`,
+        { affectsAll: true }
+      );
+    }
   }
 }
 
 function detectFactions(world) {
   const npcs = world.npcs;
-  // Simple clustering: anti-tax (< -0.2), pro-tax (> 0.2), unaligned
   const antiTax = npcs.filter(n => n.opinions.taxSentiment < -0.2);
   const proTax = npcs.filter(n => n.opinions.taxSentiment > 0.2);
   const unaligned = npcs.filter(n => Math.abs(n.opinions.taxSentiment) <= 0.2);
@@ -124,21 +151,15 @@ function detectFactions(world) {
   if (antiTax.length >= 2) {
     const avg = antiTax.reduce((s, n) => s + n.opinions.taxSentiment, 0) / antiTax.length;
     factions.push({
-      name: 'The Tillers',
-      emoji: '🌾',
-      desc: 'anti-tax, farmer-heavy',
-      members: antiTax,
-      avgSentiment: avg,
+      name: 'The Tillers', emoji: '🌾', desc: 'anti-tax, farmer-heavy',
+      members: antiTax, avgSentiment: avg,
     });
   }
   if (proTax.length >= 2) {
     const avg = proTax.reduce((s, n) => s + n.opinions.taxSentiment, 0) / proTax.length;
     factions.push({
-      name: 'The Shields',
-      emoji: '🛡️',
-      desc: 'pro-tax, guard/miller-heavy',
-      members: proTax,
-      avgSentiment: avg,
+      name: 'The Shields', emoji: '🛡️', desc: 'pro-tax, guard/miller-heavy',
+      members: proTax, avgSentiment: avg,
     });
   }
 

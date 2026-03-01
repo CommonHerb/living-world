@@ -4,8 +4,9 @@ const { WebSocketServer } = require('ws');
 const { createWorld, tickWorld } = require('./world');
 const {
   formatStatus, formatRecentEvents, formatPeople, formatLook,
-  formatMap, formatFactions, formatStats, formatHelp,
+  formatMap, formatFactions, formatStats, formatHelp, formatChronicleDisplay,
 } = require('./display');
+const { formatChronicle } = require('./chronicle');
 
 const DEFAULT_SEED = 48271;
 const TICK_INTERVAL = 1000; // ms
@@ -90,6 +91,9 @@ class SimulationServer {
 
       case 'history':
         return formatRecentEvents(this.world, 20);
+
+      case 'chronicle':
+        return formatChronicle(this.world.chronicle, parseInt(args[0]) || 20);
 
       case 'seed':
         return `Seed: ${this.world.seed}`;

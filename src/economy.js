@@ -1,12 +1,14 @@
 'use strict';
 
-const { formMemory } = require('./npc');
+const { formMemory } = require('./memory');
+const { recordEvent } = require('./chronicle');
 
 function tickEconomy(world) {
   const rng = world.tickRng;
   let totalProduced = 0;
   let totalTaxed = 0;
   let hungerCount = 0;
+  const hungryNPCs = [];
 
   for (const npc of world.npcs) {
     // === PRODUCTION ===
@@ -20,14 +22,13 @@ function tickEconomy(world) {
     } else if (npc.job === 'miller') {
       if (world.granary >= 2) {
         world.granary -= 2;
-        const produced = 3; // 1.5x conversion
+        const produced = 3;
         const tax = Math.floor(produced * world.taxRate);
         world.granary += tax;
         npc.wealth += (produced - tax);
         totalProduced += produced;
         totalTaxed += tax;
       }
-      // else: nothing to mill
     } else if (npc.job === 'guard') {
       const stipend = Math.min(2, Math.max(1, Math.floor(world.granary * 0.03)));
       if (world.granary >= stipend) {
@@ -40,13 +41,18 @@ function tickEconomy(world) {
     npc.wealth -= npc.genome.metabolism;
     if (npc.wealth < 0) {
       npc.wealth = 0;
-      formMemory(npc, 'food_shortage', -0.8, npc.wealth, world.tick);
-      npc.opinions.satisfaction = Math.max(-1, npc.opinions.satisfaction - 0.2);
-      npc.opinions.leaderApproval = Math.max(-1, npc.opinions.leaderApproval - 0.1);
+      formMemory(npc, 'food_shortage', 'self', npc.wealth, -0.8, world.tick);
       hungerCount++;
-    } else if (npc.wealth < npc.genome.metabolism * 2) {
-      npc.opinions.satisfaction = Math.max(-1, npc.opinions.satisfaction - 0.05);
+      hungryNPCs.push(npc);
+    } else if (npc.wealth > 5 && npc.wealth < 10) {
+      // Mild scarcity — no memory but slight unease
     }
+  }
+
+  // Emergency relief: if granary is 0 and many hungry, nature provides a small boost
+  // (foraging, wild game, etc. — prevents permanent death spiral)
+  if (world.granary <= 0 && hungerCount > world.npcs.length * 0.3) {
+    world.granary += Math.floor(world.npcs.length * 0.5);
   }
 
   if (hungerCount > 0) {
@@ -55,6 +61,14 @@ function tickEconomy(world) {
       type: 'hunger',
       text: `${hungerCount} NPC${hungerCount > 1 ? 's' : ''} went hungry.`,
     });
+
+    if (world.chronicle) {
+      recordEvent(world.chronicle, world.tick, 'hunger',
+        hungryNPCs.slice(0, 5).map(n => ({ id: n.id, name: n.name, role: n.job })),
+        `${hungerCount} residents went hungry. Granary: ${world.granary}.`,
+        { affectedCount: hungerCount }
+      );
+    }
   }
 
   world.events.push({

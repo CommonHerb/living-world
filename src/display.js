@@ -2,6 +2,7 @@
 
 const { getMoodLabel, getOverallMood } = require('./npc');
 const { detectFactions, giniCoefficient } = require('./politics');
+const { formatChronicle } = require('./chronicle');
 
 function formatStatus(world) {
   const councilNames = world.council
@@ -28,8 +29,8 @@ function formatRecentEvents(world, count = 10) {
 }
 
 function formatPeople(world) {
-  const lines = ['Name            Job      Wealth  Mood       Tax Opinion'];
-  lines.push('─'.repeat(60));
+  const lines = ['Name            Job      Wealth  Mood       Tax Opinion  Memories'];
+  lines.push('─'.repeat(72));
   for (const npc of world.npcs) {
     const name = npc.name.padEnd(15);
     const job = npc.job.padEnd(8);
@@ -37,7 +38,8 @@ function formatPeople(world) {
     const mood = getMoodLabel(npc.opinions.satisfaction).padEnd(10);
     const tax = npc.opinions.taxSentiment > 0.2 ? 'Pro-tax' :
                 npc.opinions.taxSentiment < -0.2 ? 'Anti-tax' : 'Moderate';
-    lines.push(`${name} ${job} ${wealth}  ${mood} ${tax}`);
+    const memCount = `${npc.memories.length}/12`;
+    lines.push(`${name} ${job} ${wealth}  ${mood} ${tax.padEnd(10)} ${memCount}`);
   }
   return lines.join('\n');
 }
@@ -63,18 +65,20 @@ function formatLook(world, name) {
     `  Leader Approval: ${npc.opinions.leaderApproval.toFixed(2)}`,
     `  Satisfaction: ${npc.opinions.satisfaction.toFixed(2)}`,
     '',
-    `Memories (${npc.memories.length}/5):`,
+    `Memories (${npc.memories.length}/12):`,
   ];
 
   if (npc.memories.length === 0) {
     lines.push('  (none)');
   } else {
     for (const mem of npc.memories) {
-      lines.push(`  Day ${mem.tick}: ${mem.tag} (val: ${mem.valence.toFixed(2)}, int: ${mem.intensity.toFixed(2)}, data: ${typeof mem.data === 'number' ? mem.data.toFixed(2) : mem.data})`);
+      const fid = mem.fidelity.toFixed(2);
+      const val = mem.valence >= 0 ? `+${mem.valence.toFixed(2)}` : mem.valence.toFixed(2);
+      const dataStr = typeof mem.value === 'number' ? mem.value.toFixed(1) : String(mem.value);
+      lines.push(`  Day ${mem.tick}: ${mem.eventType} [${mem.subject || '?'}] val:${val} fid:${fid} data:${dataStr}`);
     }
   }
 
-  // Relationships with trust > 0.15
   const rels = Object.entries(npc.relationships)
     .filter(([_, r]) => Math.abs(r.trust) > 0.15 || Math.abs(r.affinity) > 0.15)
     .map(([id, r]) => {
@@ -93,22 +97,15 @@ function formatLook(world, name) {
 
 function formatMap(world) {
   const grid = Array.from({ length: 10 }, () => Array(10).fill('.'));
-
-  // Farm edges
   for (let i = 0; i < 10; i++) {
     grid[0][i] = '🌾'; grid[9][i] = '🌾';
     grid[i][0] = '🌾'; grid[i][9] = '🌾';
   }
-
-  // Granary center
   grid[4][4] = '🏛️';
-
-  // Some homes
   grid[3][3] = '🏠'; grid[3][5] = '🏠';
   grid[4][3] = '🏠'; grid[4][5] = '🏠';
   grid[5][4] = '🏠';
 
-  // NPCs
   for (const npc of world.npcs) {
     const { x, y } = npc.position;
     if (x >= 0 && x < 10 && y >= 0 && y < 10) {
@@ -147,6 +144,11 @@ function formatStats(world) {
   const avgSat = world.npcs.reduce((s, n) => s + n.opinions.satisfaction, 0) / world.npcs.length;
   const avgTax = world.npcs.reduce((s, n) => s + n.opinions.taxSentiment, 0) / world.npcs.length;
   const avgApproval = world.npcs.reduce((s, n) => s + n.opinions.leaderApproval, 0) / world.npcs.length;
+  const totalMemories = world.npcs.reduce((s, n) => s + n.memories.length, 0);
+  const avgFidelity = world.npcs.reduce((s, n) => {
+    if (n.memories.length === 0) return s;
+    return s + n.memories.reduce((ms, m) => ms + m.fidelity, 0) / n.memories.length;
+  }, 0) / world.npcs.length;
 
   return [
     `═══ STATISTICS — Day ${world.tick} ═══`,
@@ -157,6 +159,9 @@ function formatStats(world) {
     `Average Leader Approval: ${avgApproval.toFixed(2)}`,
     `Granary: ${world.granary} food`,
     `Tax Rate: ${Math.round(world.taxRate * 100)}%`,
+    `Total Memories: ${totalMemories} across ${world.npcs.length} NPCs`,
+    `Average Memory Fidelity: ${avgFidelity.toFixed(3)}`,
+    `Chronicle Entries: ${world.chronicle ? world.chronicle.entries.length : 0}`,
   ].join('\n');
 }
 
@@ -174,6 +179,7 @@ function formatHelp() {
     '  factions         Show political clusters',
     '  stats            Simulation statistics',
     '  history          Last 20 events',
+    '  chronicle        The Chronicle — history of Millhaven',
     '  seed             Show current seed',
     '  help             This message',
     '  quit             Exit',
@@ -182,5 +188,5 @@ function formatHelp() {
 
 module.exports = {
   formatStatus, formatRecentEvents, formatPeople, formatLook,
-  formatMap, formatFactions, formatStats, formatHelp,
+  formatMap, formatFactions, formatStats, formatHelp, formatChronicleDisplay: formatChronicle,
 };

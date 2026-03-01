@@ -25,7 +25,7 @@ function createNPC(rng, id) {
   // Assign job based on distribution
   let job;
   if (id === 0) {
-    job = 'farmer'; // Player starts as farmer
+    job = 'farmer';
   } else if (id <= JOB_DISTRIBUTION.farmer) {
     job = 'farmer';
   } else if (id <= JOB_DISTRIBUTION.farmer + JOB_DISTRIBUTION.miller) {
@@ -35,17 +35,14 @@ function createNPC(rng, id) {
   }
 
   // Position on 10x10 grid
-  // Farmers on edges, guards/millers center
   let x, y;
   if (job === 'farmer') {
-    // Edge positions
     const side = rng.int(0, 3);
     if (side === 0) { x = 0; y = rng.int(0, 9); }
     else if (side === 1) { x = 9; y = rng.int(0, 9); }
     else if (side === 2) { x = rng.int(0, 9); y = 0; }
     else { x = rng.int(0, 9); y = 9; }
   } else {
-    // Center area
     x = rng.int(3, 6);
     y = rng.int(3, 6);
   }
@@ -56,29 +53,16 @@ function createNPC(rng, id) {
     genome,
     job,
     position: { x, y },
-    wealth: 10, // Starting food stockpile
+    wealth: 10,
     opinions: {
-      taxSentiment: rng.float(-0.3, 0.3), // Slight initial lean
+      taxSentiment: rng.float(-0.3, 0.3),
       leaderApproval: 0,
-      satisfaction: 0.2, // Mildly content
+      satisfaction: 0.2,
     },
-    memories: [],
-    relationships: {}, // { [npcId]: { trust, affinity } }
+    memories: [],         // Phase 2: bounded to 12, each with fidelity/valence/etc
+    relationships: {},
     emotionalState: 0,
   };
-}
-
-function formMemory(npc, tag, valence, data, tick) {
-  const mem = { tick, valence, intensity: Math.abs(valence), tag, data };
-  npc.memories.push(mem);
-  // Keep max 5 memories — evict weakest
-  if (npc.memories.length > 5) {
-    let weakest = 0;
-    for (let i = 1; i < npc.memories.length; i++) {
-      if (npc.memories[i].intensity < npc.memories[weakest].intensity) weakest = i;
-    }
-    npc.memories.splice(weakest, 1);
-  }
 }
 
 function getRelationship(npc, otherId) {
@@ -95,7 +79,7 @@ function updateRelationship(npc, otherId, trustDelta, affinityDelta) {
 }
 
 function distance(a, b) {
-  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); // Manhattan
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
 function getMoodLabel(satisfaction) {
@@ -112,6 +96,6 @@ function getOverallMood(npcs) {
 }
 
 module.exports = {
-  createNPC, formMemory, getRelationship, updateRelationship,
+  createNPC, getRelationship, updateRelationship,
   distance, getMoodLabel, getOverallMood, JOBS,
 };
